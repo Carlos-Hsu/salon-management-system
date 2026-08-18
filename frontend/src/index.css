@@ -1,0 +1,224 @@
+:root {
+  --primary-color: #d4a373; /* 暖木質感主色 */
+  --primary-hover: #c69362;
+  --secondary-color: #fefae0; /* 柔和背景色 */
+  --accent-color: #e07a5f; /* 珊瑚紅點綴 */
+  --text-main: #2b2d42; /* 主體文字色 */
+  --text-muted: #8d99ae; /* 輔助文字色 */
+  --bg-app: #faf9f6; /* 清新米白色背景 */
+  --bg-card: #ffffff;
+  --border-color: #e9ecef;
+  --success-color: #2ec4b6;
+  --pending-color: #ff9f1c;
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  --radius: 12px;
+  --transition: all 0.3s ease;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  line-height: 1.6;
+}
+
+/* App Layout - Mobile First */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* 頂部導航列 */
+.top-nav {
+  background-color: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
+  padding: 1rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.brand-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* 底部導航欄 - 手機版優先 */
+.bottom-nav {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  background-color: var(--bg-card);
+  border-top: 1px solid var(--border-color);
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  z-index: 100;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  flex: 1;
+  height: 100%;
+  gap: 4px;
+  transition: var(--transition);
+}
+
+.nav-item.active {
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+/* 主要內容區域 */
+.main-content {
+  flex: 1;
+  padding: 1rem;
+  padding-bottom: 80px; /* 留給底部導航的高度 */
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* 卡片與容器通用樣式 */
+.card {
+  background-color: var(--bg-card);
+  border-radius: var(--radius);
+  border: 1px solid var(--border-color);
+  padding: 1.25rem;
+  box-shadow: var(--shadow);
+  margin-bottom: 1rem;
+  transition: var(--transition);
+}
+
+/* 按鈕樣式 */
+.btn {
+  background-color: var(--primary-color);
+  color: #ffffff;
+  border: none;
+  padding: 0.75rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: var(--transition);
+  width: 100%; /* 手機版按鈕預設寬度滿版 */
+}
+
+.btn:hover {
+  background-color: var(--primary-hover);
+}
+
+.btn-secondary {
+  background-color: #f1f3f5;
+  color: var(--text-main);
+}
+
+.btn-secondary:hover {
+  background-color: #e9ecef;
+}
+
+/* 表單樣式 */
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--text-main);
+}
+
+.form-control {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  outline: none;
+  transition: var(--transition);
+}
+
+.form-control:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(212, 163, 115, 0.15);
+}
+
+/* 平板與桌面端響應式調整 */
+@media (min-width: 768px) {
+  .app-container {
+    flex-direction: row;
+  }
+
+  /* 側邊導航欄 */
+  .bottom-nav {
+    position: sticky;
+    top: 60px;
+    left: 0;
+    flex-direction: column;
+    justify-content: flex-start;
+    width: 240px;
+    height: calc(100vh - 60px);
+    border-top: none;
+    border-right: 1px solid var(--border-color);
+    padding: 1.5rem 1rem;
+    gap: 1rem;
+  }
+
+  .nav-item {
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    height: auto;
+    flex: none;
+    width: 100%;
+    font-size: 0.95rem;
+    gap: 12px;
+  }
+
+  .nav-item.active {
+    background-color: var(--secondary-color);
+  }
+
+  .main-content {
+    padding: 2rem;
+    padding-bottom: 2rem;
+  }
+
+  .btn {
+    width: auto; /* 桌機端恢復自適應寬度 */
+  }
+}

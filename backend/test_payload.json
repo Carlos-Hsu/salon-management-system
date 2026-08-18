@@ -1,0 +1,8 @@
+{
+  "customer_id": 1,
+  "service": "剪髮",
+  "start_time": "2026-08-18T10:00",
+  "end_time": "2026-08-18T11:00",
+  "price": 800,
+  "notes": "測試預約(無秒數)"
+}
