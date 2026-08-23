@@ -1,0 +1,83 @@
+name: Supabase weekly backup
+
+on:
+  # 每週日 00:00（Asia/Taipei）；GitHub Actions cron 使用 UTC。
+  schedule:
+    - cron: '0 16 * * 6'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-weekly-backup
+  cancel-in-progress: false
+
+jobs:
+  backup-and-email:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_SECURE: ${{ secrets.SMTP_SECURE }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          BACKUP_EMAIL_TO: ${{ secrets.BACKUP_EMAIL_TO }}
+          BACKUP_EMAIL_FROM: ${{ secrets.BACKUP_EMAIL_FROM }}
+        run: |
+          set -euo pipefail
+          for name in SUPABASE_DB_URL SMTP_SERVER SMTP_PORT SMTP_SECURE SMTP_USERNAME SMTP_PASSWORD BACKUP_EMAIL_TO BACKUP_EMAIL_FROM; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required repository secret: $name"
+              exit 1
+            fi
+          done
+
+      - name: Export public schema and data
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          mkdir -p backups
+          BACKUP_FILE="supabase-public-$(date -u +'%Y%m%dT%H%M%SZ')-run-${GITHUB_RUN_ID}.sql"
+          echo "BACKUP_PATH=backups/${BACKUP_FILE}" >> "$GITHUB_ENV"
+
+          docker run --rm \
+            -v "$PWD/backups:/backup" \
+            -e SUPABASE_DB_URL \
+            -e BACKUP_FILE \
+            postgres:17-alpine \
+            sh -c 'pg_dump "$SUPABASE_DB_URL" \
+              --schema=public \
+              --format=plain \
+              --no-owner \
+              --no-privileges \
+              --file="/backup/$BACKUP_FILE"'
+
+          test -s "backups/${BACKUP_FILE}"
+          sha256sum "backups/${BACKUP_FILE}" > "backups/${BACKUP_FILE}.sha256"
+
+      - name: Email SQL backup
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          secure: ${{ secrets.SMTP_SECURE }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "Salon Management System｜Supabase 每週備份"
+          to: ${{ secrets.BACKUP_EMAIL_TO }}
+          from: ${{ secrets.BACKUP_EMAIL_FROM }}
+          body: |
+            Supabase public schema 的結構與資料備份已完成。
+            Repository: ${{ github.repository }}
+            Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          attachments: ${{ env.BACKUP_PATH }},${{ env.BACKUP_PATH }}.sha256
