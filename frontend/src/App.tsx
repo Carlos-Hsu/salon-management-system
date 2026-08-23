@@ -33,7 +33,7 @@ function App() {
     } catch (err) {
       setDataError(err instanceof Error ? err.message : '核心資料載入失敗');
     }
-    // Finance remains an explicitly separate Express/SQLite boundary.
+    // Finance uses Supabase when configured and the legacy Express API otherwise.
     try { const [income, expense] = await Promise.all([api.getIncomeItems(), api.getExpenseItems()]); setIncomeItems(income); setExpenseItems(expense); } catch { /* Finance view reports API errors when used. */ }
   };
 

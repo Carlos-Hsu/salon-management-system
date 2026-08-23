@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, TrendingUp, TrendingDown, Edit, Trash2 } from 'lucide-react';
+import { Plus, WalletCards, Banknote, Smartphone, Eye, Edit, Trash2, X } from 'lucide-react';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { api, Transaction, TransactionItem } from '../api';
+import { supabase } from '../lib/supabase';
 
 interface FinanceViewProps {
   incomeItems: TransactionItem[];
@@ -9,162 +10,192 @@ interface FinanceViewProps {
   onRefresh: () => Promise<void>;
 }
 
+type ChannelFilter = 'all' | 'cash' | 'line_pay' | 'expense';
+
+const currency = (value: number) => new Intl.NumberFormat('zh-TW', {
+  style: 'currency', currency: 'TWD', maximumFractionDigits: 0,
+}).format(value);
+
+const contentBadge = (transaction: Transaction) => {
+  if (transaction.type === 'income') return transaction.payment_method === 'cash' ? '現金' : 'LINE Pay';
+  return /髮品|藥水|耗材|進貨/.test(transaction.itemName ?? '') ? '髮品進貨' : '固定支出';
+};
+
 export const FinanceView: React.FC<FinanceViewProps> = ({ incomeItems, expenseItems, onRefresh }) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [filter, setFilter] = useState<'day' | 'week' | 'month'>('day');
+  const [periodFilter, setPeriodFilter] = useState<'day' | 'week' | 'month'>('month');
+  const [channelFilter, setChannelFilter] = useState<ChannelFilter>('all');
+  const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
+  const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-  
-  // 記錄用的表單狀態
+  const [detailTransaction, setDetailTransaction] = useState<Transaction | null>(null);
   const [type, setType] = useState<'income' | 'expense'>('income');
   const [itemId, setItemId] = useState<number | ''>('');
-  const [amount, setAmount] = useState<number>(0);
+  const [amount, setAmount] = useState(0);
+  const [transactionDate, setTransactionDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [notes, setNotes] = useState('');
 
   const loadTransactions = useCallback(async () => {
-    let startDate, endDate;
+    let startDate: string;
+    let endDate: string;
     const now = new Date();
-    if (filter === 'day') {
+    if (periodFilter === 'day') {
       startDate = format(startOfDay(now), 'yyyy-MM-dd');
       endDate = format(endOfDay(now), 'yyyy-MM-dd');
-    } else if (filter === 'week') {
+    } else if (periodFilter === 'week') {
       startDate = format(startOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd');
       endDate = format(endOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd');
     } else {
-      startDate = format(startOfMonth(now), 'yyyy-MM-dd');
-      endDate = format(endOfMonth(now), 'yyyy-MM-dd');
+      const month = new Date(`${selectedMonth}-01T12:00:00`);
+      startDate = format(startOfMonth(month), 'yyyy-MM-dd');
+      endDate = format(endOfMonth(month), 'yyyy-MM-dd');
     }
-    const data = await api.getTransactions(startDate, endDate);
-    setTransactions(data);
-  }, [filter]);
-
-  useEffect(() => { loadTransactions(); }, [loadTransactions]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingTransaction) {
-      await api.updateTransaction({ ...editingTransaction, amount, notes });
-    } else {
-      await api.createTransaction({ type, item_id: Number(itemId), amount, notes });
+    try {
+      setTransactions(await api.getTransactions(startDate, endDate));
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '收支資料載入失敗');
     }
-    setShowModal(false);
-    loadTransactions();
-    onRefresh();
+  }, [periodFilter, selectedMonth]);
+
+  useEffect(() => {
+    void loadTransactions();
+    const channel = supabase?.channel('finance-record-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_records' }, () => void loadTransactions())
+      .subscribe();
+    return () => { if (channel && supabase) void supabase.removeChannel(channel); };
+  }, [loadTransactions]);
+
+  const totalIncome = transactions.filter(item => item.type === 'income').reduce((sum, item) => sum + item.amount, 0);
+  const totalExpense = transactions.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0);
+  const cashIncome = transactions.filter(item => item.type === 'income' && item.payment_method === 'cash').reduce((sum, item) => sum + item.amount, 0);
+  const linePayIncome = transactions.filter(item => item.type === 'income' && item.payment_method === 'line_pay').reduce((sum, item) => sum + item.amount, 0);
+  const visibleTransactions = transactions.filter(item => {
+    if (channelFilter === 'all') return true;
+    if (channelFilter === 'expense') return item.type === 'expense';
+    return item.type === 'income' && item.payment_method === channelFilter;
+  });
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try {
+      if (editingTransaction) await api.updateTransaction({ ...editingTransaction, amount, notes });
+      else await api.createTransaction({ type, item_id: Number(itemId), amount, date: `${transactionDate}T12:00:00+08:00`, notes });
+      setShowModal(false);
+      await loadTransactions();
+      await onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '收支記錄儲存失敗');
+    }
   };
 
   const handleDelete = async (id: number) => {
-    if (confirm('確定刪除此筆記錄？')) {
+    if (!confirm('確定刪除此筆記錄？')) return;
+    try {
       await api.deleteTransaction(id);
-      loadTransactions();
-      onRefresh();
+      await loadTransactions();
+      await onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '收支記錄刪除失敗');
     }
   };
 
-  const openEditModal = (t: Transaction) => {
-    setEditingTransaction(t);
-    setType(t.type);
-    setItemId(t.item_id);
-    setAmount(t.amount);
-    setNotes(t.notes || '');
+  const openEditModal = (transaction: Transaction) => {
+    setEditingTransaction(transaction);
+    setType(transaction.type);
+    setItemId(transaction.item_id);
+    setAmount(transaction.amount);
+    setTransactionDate(transaction.date ? format(new Date(transaction.date), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'));
+    setNotes(transaction.notes ?? '');
     setShowModal(true);
   };
 
-  const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-  const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+  const openCreateModal = () => {
+    setEditingTransaction(null);
+    setType('expense');
+    setItemId('');
+    setAmount(0);
+    setNotes('');
+    setTransactionDate(format(new Date(), 'yyyy-MM-dd'));
+    setShowModal(true);
+  };
 
-  return (
-    <div className="finance-view" style={{ animation: 'fadeIn 0.5s ease' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <h2 style={{ fontWeight: 700 }}>收支管理</h2>
-        <button className="btn" onClick={() => { setEditingTransaction(null); setShowModal(true); }}><Plus size={18} /> 新增記錄</button>
-      </div>
-
-      <div className="card" style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem' }}>
-        {(['day', 'week', 'month'] as const).map(f => (
-          <button key={f} className={`btn ${filter === f ? '' : 'btn-secondary'}`} onClick={() => setFilter(f)} style={{ flex: 1 }}>
-            {f === 'day' ? '今日' : f === 'week' ? '本週' : '本月'}
-          </button>
-        ))}
-      </div>
-
-      <div className="card" style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-around', fontWeight: 600 }}>
-        <span>收入總計: <span style={{ color: 'var(--success-color)' }}>${totalIncome}</span></span>
-        <span>支出總計: <span style={{ color: 'var(--warning-color)' }}>${totalExpense}</span></span>
-        <span>淨利: <span style={{ color: totalIncome - totalExpense >= 0 ? 'var(--primary-color)' : 'var(--warning-color)' }}>${totalIncome - totalExpense}</span></span>
-      </div>
-
-      <div className="card">
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-              <th style={{ textAlign: 'left', padding: '0.5rem' }}>類型</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem' }}>項目</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem' }}>內容</th>
-              <th style={{ textAlign: 'right', padding: '0.5rem' }}>金額</th>
-              <th style={{ textAlign: 'center', padding: '0.5rem' }}>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {transactions.map(t => (
-              <tr key={t.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '0.5rem', color: t.type === 'income' ? 'var(--success-color)' : 'var(--warning-color)' }}>
-                  {t.type === 'income' ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
-                </td>
-                <td style={{ padding: '0.5rem' }}>
-                    {t.itemName}
-                    {t.customerName && <div style={{fontSize: '0.7rem', color: 'var(--text-muted)'}}>{t.customerName} - {t.serviceName}</div>}
-                </td>
-                <td style={{ padding: '0.5rem', fontSize: '0.85rem' }}>{t.notes}</td>
-                <td style={{ textAlign: 'right', padding: '0.5rem' }}>${t.amount}</td>
-                <td style={{ textAlign: 'center', padding: '0.5rem' }}>
-                  <button onClick={() => openEditModal(t)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary-color)', marginRight: '0.5rem' }}><Edit size={16} /></button>
-                  <button onClick={() => handleDelete(t.id!)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--warning-color)' }}><Trash2 size={16} /></button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {showModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
-          <div className="card" style={{ width: '100%', maxWidth: '400px' }}>
-            <h3 style={{ marginBottom: '1rem' }}>{editingTransaction ? '編輯記錄' : '新增記錄'}</h3>
-            <form onSubmit={handleSubmit}>
-              {!editingTransaction && (
-                <>
-                  <div className="form-group">
-                    <label>類型</label>
-                    <select className="form-control" value={type} onChange={e => { setType(e.target.value as 'income' | 'expense'); setItemId(''); }}>
-                      <option value="income">收入</option>
-                      <option value="expense">支出</option>
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label>項目</label>
-                    <select className="form-control" required value={itemId} onChange={e => setItemId(Number(e.target.value))}>
-                      <option value="">請選擇項目</option>
-                      {(type === 'income' ? incomeItems : expenseItems).map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-                    </select>
-                  </div>
-                </>
-              )}
-              <div className="form-group">
-                <label>金額</label>
-                <input className="form-control" type="number" required value={amount} onChange={e => setAmount(Number(e.target.value))} />
-              </div>
-              <div className="form-group">
-                <label>備註</label>
-                <input className="form-control" type="text" value={notes} onChange={e => setNotes(e.target.value)} />
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-                <button className="btn btn-secondary" type="button" onClick={() => setShowModal(false)} style={{ flex: 1 }}>取消</button>
-                <button className="btn" type="submit" style={{ flex: 1 }}>儲存</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+  return <div className="finance-view" style={{ animation: 'fadeIn 0.5s ease' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+      <div><h2 style={{ fontWeight: 800 }}>收支與打烊對帳</h2><p style={{ color: 'var(--text-muted)' }}>核對現金、LINE Pay 與工作室營運支出</p></div>
+      <button className="btn" onClick={openCreateModal}><Plus size={18} /> 新增收支</button>
     </div>
-  );
+
+    <div className="card" style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
+      {(['day', 'week', 'month'] as const).map(value => <button key={value} className={`btn ${periodFilter === value ? '' : 'btn-secondary'}`} onClick={() => setPeriodFilter(value)} style={{ flex: 1 }}>
+        {value === 'day' ? '今日' : value === 'week' ? '本週' : '指定月份'}
+      </button>)}
+      {periodFilter === 'month' && <input aria-label="選擇收支月份" className="form-control" type="month" value={selectedMonth} onChange={event => setSelectedMonth(event.target.value)} style={{ minHeight: 48, flexBasis: '100%' }} />}
+    </div>
+
+    {error && <p className="settings-error" role="alert">{error}</p>}
+
+    <section className="finance-total-grid" aria-label="收支總覽">
+      <article className="card finance-total income"><span>收入總計</span><strong>{currency(totalIncome)}</strong></article>
+      <article className="card finance-total expense"><span>支出總計</span><strong>{currency(totalExpense)}</strong></article>
+      <article className="card finance-total profit"><span>淨利</span><strong>{currency(totalIncome - totalExpense)}</strong></article>
+    </section>
+
+    <section className="card payment-summary" aria-labelledby="payment-summary-title">
+      <div className="panel-heading"><WalletCards size={20} /><h3 id="payment-summary-title">打烊支付對帳</h3></div>
+      <div className="payment-summary-grid">
+        <div><Banknote size={24} /><span>現金收入</span><strong>{currency(cashIncome)}</strong></div>
+        <div><Smartphone size={24} /><span>LINE Pay 收入</span><strong>{currency(linePayIncome)}</strong></div>
+      </div>
+      <small>支付管道合計：{currency(cashIncome + linePayIncome)}{cashIncome + linePayIncome !== totalIncome ? '（尚有未分類收入）' : ''}</small>
+    </section>
+
+    <div className="card finance-channel-filter" aria-label="支付與類型篩選">
+      {([['all', '全部'], ['cash', '現金'], ['line_pay', 'LINE Pay'], ['expense', '支出']] as const).map(([value, label]) =>
+        <button key={value} className={`btn ${channelFilter === value ? '' : 'btn-secondary'}`} onClick={() => setChannelFilter(value)}>{label}</button>)}
+    </div>
+
+    <div className="card finance-table-wrap">
+      <table className="finance-table">
+        <thead><tr><th>日期</th><th>類型</th><th>項目</th><th>內容</th><th>金額</th><th>操作</th></tr></thead>
+        <tbody>
+          {visibleTransactions.map(transaction => <tr key={`${transaction.source ?? 'legacy'}-${transaction.id}`}>
+            <td>{transaction.date ? format(new Date(transaction.date), 'MM/dd') : '—'}</td>
+            <td><span className={`finance-type-badge ${transaction.type}`}>{transaction.type === 'income' ? '收入' : '支出'}</span></td>
+            <td><strong>{transaction.itemName}</strong>{transaction.customerName && <small>{transaction.customerName}・{transaction.serviceName}</small>}</td>
+            <td><span className={`finance-content-badge ${transaction.type === 'income' ? transaction.payment_method : 'expense'}`}>{contentBadge(transaction)}</span></td>
+            <td className={`finance-amount ${transaction.type}`}>{transaction.type === 'expense' ? '−' : '+'}{currency(transaction.amount)}</td>
+            <td>
+              {transaction.order_id && <button className="finance-detail-button" onClick={() => setDetailTransaction(transaction)}><Eye size={16} />檢視明細</button>}
+              {transaction.editable && <span className="finance-row-actions"><button aria-label="編輯收支記錄" onClick={() => openEditModal(transaction)}><Edit size={16} /></button><button aria-label="刪除收支記錄" onClick={() => handleDelete(transaction.id!)}><Trash2 size={16} /></button></span>}
+            </td>
+          </tr>)}
+          {!visibleTransactions.length && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>此區間沒有符合條件的收支紀錄</td></tr>}
+        </tbody>
+      </table>
+    </div>
+
+    {detailTransaction && <div className="modal-overlay" onMouseDown={event => { if (event.target === event.currentTarget) setDetailTransaction(null); }}>
+      <section className="card finance-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="finance-detail-title">
+        <button className="modal-close" aria-label="關閉明細" onClick={() => setDetailTransaction(null)}><X size={20} /></button>
+        <h3 id="finance-detail-title">結帳明細</h3>
+        <dl><div><dt>顧客</dt><dd>{detailTransaction.customerName ?? '—'}</dd></div><div><dt>服務</dt><dd>{detailTransaction.serviceName ?? '—'}</dd></div><div><dt>付款</dt><dd><span className={`finance-content-badge ${detailTransaction.payment_method}`}>{contentBadge(detailTransaction)}</span></dd></div></dl>
+        <div className="finance-detail-items">{detailTransaction.details?.map((item, index) => <div key={`${item.item_type}-${index}`}><span>{item.name} × {item.quantity}</span><strong>{currency(item.line_amount)}</strong></div>)}</div>
+        <div className="finance-detail-total"><span>實收金額</span><strong>{currency(detailTransaction.amount)}</strong></div>
+      </section>
+    </div>}
+
+    {showModal && <div className="modal-overlay" onMouseDown={event => { if (event.target === event.currentTarget) setShowModal(false); }}>
+      <section className="card finance-entry-dialog" role="dialog" aria-modal="true" aria-labelledby="finance-entry-title">
+        <h3 id="finance-entry-title">{editingTransaction ? '編輯記錄' : '新增收支記錄'}</h3>
+        <form onSubmit={handleSubmit}>
+          {!editingTransaction && <><div className="form-group"><label>類型</label><select className="form-control" value={type} onChange={event => { setType(event.target.value as 'income' | 'expense'); setItemId(''); }}><option value="income">收入</option><option value="expense">支出</option></select></div><div className="form-group"><label>項目</label><select className="form-control" required value={itemId} onChange={event => setItemId(Number(event.target.value))}><option value="">請選擇項目</option>{(type === 'income' ? incomeItems : expenseItems).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div><div className="form-group"><label>日期</label><input className="form-control" type="date" required value={transactionDate} onChange={event => setTransactionDate(event.target.value)} /></div></>}
+          <div className="form-group"><label>金額</label><input className="form-control" type="number" min="0" required value={amount} onChange={event => setAmount(Number(event.target.value))} /></div>
+          <div className="form-group"><label>備註</label><input className="form-control" value={notes} onChange={event => setNotes(event.target.value)} /></div>
+          <div style={{ display: 'flex', gap: '.5rem', marginTop: '1rem' }}><button className="btn btn-secondary" type="button" onClick={() => setShowModal(false)} style={{ flex: 1 }}>取消</button><button className="btn" type="submit" style={{ flex: 1 }}>儲存</button></div>
+        </form>
+      </section>
+    </div>}
+  </div>;
 };
