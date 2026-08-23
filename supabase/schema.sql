@@ -62,12 +62,15 @@ create or replace function public.set_updated_at() returns trigger language plpg
 create or replace function public.validate_calendar_slot() returns trigger language plpgsql set search_path = pg_catalog, public as $$
 begin
   perform pg_advisory_xact_lock(8127331);
-  if tg_table_name = 'appointments' and new.status <> 'cancelled' and exists (
-    select 1 from public.blocked_times b where new.start_time < b.end_time and new.end_time > b.start_time
-  ) then raise exception using errcode='23P01', message='Appointment overlaps blocked time'; end if;
-  if tg_table_name = 'blocked_times' and exists (
-    select 1 from public.appointments a where a.status <> 'cancelled' and new.start_time < a.end_time and new.end_time > a.start_time
-  ) then raise exception using errcode='23P01', message='Blocked time overlaps appointment'; end if;
+  if tg_table_name = 'appointments' then
+    if new.status <> 'cancelled' and exists (
+      select 1 from public.blocked_times b where new.start_time < b.end_time and new.end_time > b.start_time
+    ) then raise exception using errcode='23P01', message='Appointment overlaps blocked time'; end if;
+  elsif tg_table_name = 'blocked_times' then
+    if exists (
+      select 1 from public.appointments a where a.status <> 'cancelled' and new.start_time < a.end_time and new.end_time > a.start_time
+    ) then raise exception using errcode='23P01', message='Blocked time overlaps appointment'; end if;
+  end if;
   return new;
 end $$;
 create or replace function public.validate_appointment_transition() returns trigger language plpgsql set search_path = pg_catalog, public as $$
