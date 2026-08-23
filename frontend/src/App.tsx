@@ -1,55 +1,52 @@
 import { useState, useEffect } from 'react';
-import { Home, Calendar as CalendarIcon, Users, Settings as SettingsIcon, Menu, Package, DollarSign, User } from 'lucide-react';
-import { api, Customer, Appointment, DashboardStats, Product, Transaction, TransactionItem, Staff } from './api';
+import { Home, Calendar as CalendarIcon, Users, Menu, Package, DollarSign, Settings } from 'lucide-react';
+import { api, Customer, Appointment, Product, TransactionItem, Service, BlockTime } from './api';
 import { Dashboard } from './components/Dashboard';
 import { CalendarView } from './components/CalendarView';
 import { CustomersView } from './components/CustomersView';
 import { ProductsView } from './components/ProductsView';
 import { FinanceView } from './components/FinanceView';
-import { StaffView } from './components/StaffView';
+import { SettingsView } from './components/SettingsView';
+import { BookingCheckoutPrototype } from './features/booking-checkout/BookingCheckoutPrototype';
+import { supabase } from './lib/supabase';
+
 
 function App() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [stats, setStats] = useState<DashboardStats>({ todayAppointments: 0, todayRevenue: 0, totalCustomers: 0 });
+  const [calendarPreview, setCalendarPreview] = useState(true);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [staffList, setStaffList] = useState<Staff[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [blocks, setBlocks] = useState<BlockTime[]>([]);
   const [incomeItems, setIncomeItems] = useState<TransactionItem[]>([]);
   const [expenseItems, setExpenseItems] = useState<TransactionItem[]>([]);
+  const [dataError, setDataError] = useState('');
 
-  // 載入資料
+  // Core data uses one explicit adapter; configured Supabase failures never fall back to SQLite.
   const loadData = async () => {
     try {
-      const [fetchedStats, fetchedAppointments, fetchedCustomers, fetchedProducts, fetchedStaff, fetchedTransactions, fetchedIncomeItems, fetchedExpenseItems] = await Promise.all([
-        api.getStats(),
-        api.getAppointments(),
-        api.getCustomers(),
-        api.getProducts(),
-        api.getStaffList(),
-        api.getTransactions(),
-        api.getIncomeItems(),
-        api.getExpenseItems(),
+      const [fetchedAppointments, fetchedCustomers, fetchedProducts, fetchedServices, fetchedBlocks] = await Promise.all([
+        api.getAppointments(), api.getCustomers(), api.getProducts(), api.getServices(), api.getBlocks(),
       ]);
-      setStats(fetchedStats);
-      setAppointments(fetchedAppointments);
-      setCustomers(fetchedCustomers);
-      setProducts(fetchedProducts);
-      setStaffList(fetchedStaff);
-      setTransactions(fetchedTransactions);
-      setIncomeItems(fetchedIncomeItems);
-      setExpenseItems(fetchedExpenseItems);
+      setAppointments(fetchedAppointments); setCustomers(fetchedCustomers); setProducts(fetchedProducts); setServices(fetchedServices); setBlocks(fetchedBlocks); setDataError('');
     } catch (err) {
-      console.error('載入資料失敗:', err);
+      setDataError(err instanceof Error ? err.message : '核心資料載入失敗');
     }
+    // Finance remains an explicitly separate Express/SQLite boundary.
+    try { const [income, expense] = await Promise.all([api.getIncomeItems(), api.getExpenseItems()]); setIncomeItems(income); setExpenseItems(expense); } catch { /* Finance view reports API errors when used. */ }
   };
 
   useEffect(() => {
-    loadData();
-    // 設定每 10 秒自動同步
+    void loadData();
     const interval = setInterval(loadData, 10000);
-    return () => clearInterval(interval);
+    const channel = supabase?.channel('salon-core-changes')
+      .on('postgres_changes', { event: '*', schema: 'public' }, () => { void loadData(); })
+      .subscribe();
+    return () => {
+      clearInterval(interval);
+      if (channel && supabase) void supabase.removeChannel(channel);
+    };
   }, []);
 
   // 預約的 handler
@@ -86,27 +83,35 @@ function App() {
       {/* 頂部導航列 (行動裝置標題列) */}
       <header className="top-nav">
         <h1 className="brand-title">
-          <Menu size={22} style={{ color: 'var(--primary-color)' }} />
-          <span>美容美髮沙龍管理系統</span>
+          <Menu size={22} aria-hidden="true" />
+          <span>美髮沙龍管理</span>
         </h1>
       </header>
 
       {/* 主要內容展示 */}
       <main className="main-content">
+        {dataError && <p className="settings-error" role="alert">資料來源錯誤：{dataError}</p>}
         {activeTab === 'dashboard' && (
-          <Dashboard stats={stats} onNavigate={setActiveTab} />
+          <Dashboard onNavigate={setActiveTab} />
         )}
-        {activeTab === 'calendar' && (
-          <CalendarView 
+        {activeTab === 'calendar' && (<>
+          <div className="view-switcher mx-auto mb-4 flex max-w-7xl gap-2 p-2">
+            <button className={`min-h-12 flex-1 px-4 text-base font-bold ${calendarPreview?'active':''}`} onClick={() => setCalendarPreview(true)}>預約操作預覽</button>
+            <button className={`min-h-12 flex-1 px-4 text-base font-bold ${!calendarPreview?'active':''}`} onClick={() => setCalendarPreview(false)}>正式預約行事曆</button>
+          </div>
+          {calendarPreview ? <BookingCheckoutPrototype appointments={appointments} customers={customers} services={services} products={products} onCreate={handleCreateAppointment} onRefresh={loadData} /> : <CalendarView
             appointments={appointments} 
             customers={customers} 
             products={products}
+            services={services}
+            blocks={blocks}
             onCreateAppointment={handleCreateAppointment}
             onUpdateAppointment={handleUpdateAppointment}
             onDeleteAppointment={handleDeleteAppointment}
-            onCreateCustomer={handleCreateCustomer}
-          />
-        )}
+            onCreateBlock={async value => { await api.createBlock(value); await loadData(); }}
+            onDeleteBlock={async id => { await api.deleteBlock(id); await loadData(); }}
+          />}
+        </>)}
         {activeTab === 'customers' && (
           <CustomersView 
             customers={customers} 
@@ -116,21 +121,7 @@ function App() {
           />
         )}
         {activeTab === 'products' && (
-          <ProductsView
-            products={products}
-            vendors={[]}
-            onCreateProduct={async (p) => { await api.createProduct(p); await loadData(); }}
-            onUpdateProduct={async (p) => { /* TODO: Implement backend API */ }}
-            onDeleteProduct={async (id) => { /* TODO: Implement backend API */ }}
-          />
-        )}
-        {activeTab === 'staff' && (
-          <StaffView
-            staffList={staffList}
-            onCreateStaff={async (s) => { await api.createStaff(s); await loadData(); }}
-            onUpdateStaff={async (s) => { /* TODO: Implement backend API */ }}
-            onDeleteStaff={async (id) => { /* TODO: Implement backend API */ }}
-          />
+          <ProductsView products={products} onRefresh={loadData} />
         )}
         {activeTab === 'finance' && (
           <FinanceView
@@ -139,12 +130,7 @@ function App() {
             onRefresh={loadData}
           />
         )}
-        {activeTab === 'settings' && (
-          <div className="card" style={{ animation: 'fadeIn 0.5s ease' }}>
-            <h2 style={{ marginBottom: '1.5rem', fontWeight: 700 }}>系統設定</h2>
-            <button className="btn" onClick={loadData}>立即手動強制同步</button>
-          </div>
-        )}
+        {activeTab === 'settings' && <SettingsView services={services} onRefresh={loadData} />}
       </main>
 
       {/* 底部導航欄 */}
@@ -165,13 +151,11 @@ function App() {
           <Package size={20} />
           <span>產品</span>
         </button>
-        <button className={`nav-item ${activeTab === 'staff' ? 'active' : ''}`} onClick={() => setActiveTab('staff')}>
-          <User size={20} />
-          <span>設計師</span>
-        </button>
         <button className={`nav-item ${activeTab === 'finance' ? 'active' : ''}`} onClick={() => setActiveTab('finance')}>
-          <DollarSign size={20} />
-          <span>收支</span>
+          <DollarSign size={20} /><span>收支</span>
+        </button>
+        <button className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>
+          <Settings size={20} /><span>設定</span>
         </button>
       </nav>
     </div>

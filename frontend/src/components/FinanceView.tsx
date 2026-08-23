@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, TrendingUp, TrendingDown, Edit, Trash2 } from 'lucide-react';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { api, Transaction, TransactionItem } from '../api';
@@ -21,7 +21,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ incomeItems, expenseIt
   const [amount, setAmount] = useState<number>(0);
   const [notes, setNotes] = useState('');
 
-  const loadTransactions = async () => {
+  const loadTransactions = useCallback(async () => {
     let startDate, endDate;
     const now = new Date();
     if (filter === 'day') {
@@ -36,9 +36,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ incomeItems, expenseIt
     }
     const data = await api.getTransactions(startDate, endDate);
     setTransactions(data);
-  };
+  }, [filter]);
 
-  useEffect(() => { loadTransactions(); }, [filter]);
+  useEffect(() => { loadTransactions(); }, [loadTransactions]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,14 +89,14 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ incomeItems, expenseIt
 
       <div className="card" style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-around', fontWeight: 600 }}>
         <span>收入總計: <span style={{ color: 'var(--success-color)' }}>${totalIncome}</span></span>
-        <span>支出總計: <span style={{ color: '#ff4d4f' }}>${totalExpense}</span></span>
-        <span>淨利: <span style={{ color: totalIncome - totalExpense >= 0 ? 'var(--primary-color)' : '#ff4d4f' }}>${totalIncome - totalExpense}</span></span>
+        <span>支出總計: <span style={{ color: 'var(--warning-color)' }}>${totalExpense}</span></span>
+        <span>淨利: <span style={{ color: totalIncome - totalExpense >= 0 ? 'var(--primary-color)' : 'var(--warning-color)' }}>${totalIncome - totalExpense}</span></span>
       </div>
 
       <div className="card">
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ borderBottom: '1px solid #eee' }}>
+            <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
               <th style={{ textAlign: 'left', padding: '0.5rem' }}>類型</th>
               <th style={{ textAlign: 'left', padding: '0.5rem' }}>項目</th>
               <th style={{ textAlign: 'left', padding: '0.5rem' }}>內容</th>
@@ -106,19 +106,19 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ incomeItems, expenseIt
           </thead>
           <tbody>
             {transactions.map(t => (
-              <tr key={t.id} style={{ borderBottom: '1px solid #f9f9f9' }}>
-                <td style={{ padding: '0.5rem', color: t.type === 'income' ? 'var(--success-color)' : '#ff4d4f' }}>
+              <tr key={t.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                <td style={{ padding: '0.5rem', color: t.type === 'income' ? 'var(--success-color)' : 'var(--warning-color)' }}>
                   {t.type === 'income' ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
                 </td>
                 <td style={{ padding: '0.5rem' }}>
                     {t.itemName}
-                    {(t as any).customerName && <div style={{fontSize: '0.7rem', color: '#888'}}>{(t as any).customerName} - {(t as any).serviceName}</div>}
+                    {t.customerName && <div style={{fontSize: '0.7rem', color: 'var(--text-muted)'}}>{t.customerName} - {t.serviceName}</div>}
                 </td>
                 <td style={{ padding: '0.5rem', fontSize: '0.85rem' }}>{t.notes}</td>
                 <td style={{ textAlign: 'right', padding: '0.5rem' }}>${t.amount}</td>
                 <td style={{ textAlign: 'center', padding: '0.5rem' }}>
                   <button onClick={() => openEditModal(t)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary-color)', marginRight: '0.5rem' }}><Edit size={16} /></button>
-                  <button onClick={() => handleDelete(t.id!)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff4d4f' }}><Trash2 size={16} /></button>
+                  <button onClick={() => handleDelete(t.id!)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--warning-color)' }}><Trash2 size={16} /></button>
                 </td>
               </tr>
             ))}
@@ -135,7 +135,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ incomeItems, expenseIt
                 <>
                   <div className="form-group">
                     <label>類型</label>
-                    <select className="form-control" value={type} onChange={e => { setType(e.target.value as any); setItemId(''); }}>
+                    <select className="form-control" value={type} onChange={e => { setType(e.target.value as 'income' | 'expense'); setItemId(''); }}>
                       <option value="income">收入</option>
                       <option value="expense">支出</option>
                     </select>

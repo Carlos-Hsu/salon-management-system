@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Plus, Phone, MessageSquare, Tag, FileText, Edit, Trash2 } from 'lucide-react';
+import { Search, Plus, Phone, MessageSquare, FileText, Edit, Trash2 } from 'lucide-react';
 import { Customer } from '../api';
 
 interface CustomersViewProps {
@@ -53,7 +53,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ customers, onCreat
         await onCreateCustomer({ name, phone, email, notes });
       }
       setShowModal(false);
-    } catch (err) {
+    } catch {
       alert(editingCustomer ? '更新客戶失敗' : '新增客戶失敗');
     }
   };
@@ -96,7 +96,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ customers, onCreat
                   <button onClick={() => openEditModal(customer)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary-color)', marginRight: '0.5rem' }}>
                     <Edit size={16} />
                   </button>
-                  <button onClick={() => handleDelete(customer.id!)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff4d4f' }}>
+                  <button onClick={() => handleDelete(customer.id!)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--warning-color)' }}>
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -109,8 +109,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ customers, onCreat
                   <FileText size={14} /> {customer.email}
                 </p>
               )}
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+                最近消費：${customer.last_spend || 0}{customer.last_visit ? ` · ${new Date(customer.last_visit).toLocaleDateString()}` : ' · 尚無完成紀錄'}
+              </p>
               {customer.notes && (
-                <div style={{ marginTop: '0.75rem', padding: '8px', borderRadius: '6px', backgroundColor: '#faf9f6', fontSize: '0.85rem', color: 'var(--text-main)', borderLeft: '3px solid var(--primary-color)' }}>
+                <div style={{ marginTop: '0.75rem', padding: '8px', borderRadius: '3px', backgroundColor: 'var(--bg-app)', fontSize: '0.85rem', color: 'var(--text-main)', borderLeft: '3px solid var(--primary-color)' }}>
                   <strong>備註：</strong>{customer.notes}
                 </div>
               )}
