@@ -12,7 +12,7 @@ export default {
         muted: '#94a3b8',
         primary: '#d6b36a',
         graphite: '#1e293b',
-        accent: '#f2d58a',
+        accent: '#cbd5e1',
         confirmed: { DEFAULT: '#fbbf24', surface: 'rgb(245 158 11 / 0.10)' },
         completed: { DEFAULT: '#34d399', surface: 'rgb(16 185 129 / 0.10)' },
         service: { DEFAULT: '#a5b4fc', surface: 'rgb(99 102 241 / 0.11)' },

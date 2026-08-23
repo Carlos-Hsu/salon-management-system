@@ -93,10 +93,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ customers, onCreat
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                 <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>{customer.name}</h3>
                 <div>
-                  <button onClick={() => openEditModal(customer)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary-color)', marginRight: '0.5rem' }}>
+                  <button aria-label="編輯顧客" onClick={() => openEditModal(customer)} style={{ background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '10px', cursor: 'pointer', color: 'var(--text-muted)', marginRight: '0.5rem' }}>
                     <Edit size={16} />
                   </button>
-                  <button onClick={() => handleDelete(customer.id!)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--warning-color)' }}>
+                  <button aria-label="刪除顧客" className="danger-action" onClick={() => handleDelete(customer.id!)}>
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -113,7 +113,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ customers, onCreat
                 最近消費：${customer.last_spend || 0}{customer.last_visit ? ` · ${new Date(customer.last_visit).toLocaleDateString()}` : ' · 尚無完成紀錄'}
               </p>
               {customer.notes && (
-                <div style={{ marginTop: '0.75rem', padding: '8px', borderRadius: '3px', backgroundColor: 'var(--bg-app)', fontSize: '0.85rem', color: 'var(--text-main)', borderLeft: '3px solid var(--primary-color)' }}>
+                <div style={{ marginTop: '0.75rem', padding: '8px', borderRadius: '3px', backgroundColor: 'var(--bg-app)', fontSize: '0.85rem', color: 'var(--text-main)', borderLeft: '3px solid var(--service-color)' }}>
                   <strong>備註：</strong>{customer.notes}
                 </div>
               )}

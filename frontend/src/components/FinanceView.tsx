@@ -128,7 +128,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ incomeItems, expenseIt
     </div>
 
     <div className="card" style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
-      {(['day', 'week', 'month'] as const).map(value => <button key={value} className={`btn ${periodFilter === value ? '' : 'btn-secondary'}`} onClick={() => setPeriodFilter(value)} style={{ flex: 1 }}>
+      {(['day', 'week', 'month'] as const).map(value => <button key={value} className={`btn btn-secondary ${periodFilter === value ? 'tab-active' : ''}`} onClick={() => setPeriodFilter(value)} style={{ flex: 1 }}>
         {value === 'day' ? '今日' : value === 'week' ? '本週' : '指定月份'}
       </button>)}
       {periodFilter === 'month' && <input aria-label="選擇收支月份" className="form-control" type="month" value={selectedMonth} onChange={event => setSelectedMonth(event.target.value)} style={{ minHeight: 48, flexBasis: '100%' }} />}
@@ -153,7 +153,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ incomeItems, expenseIt
 
     <div className="card finance-channel-filter" aria-label="支付與類型篩選">
       {([['all', '全部'], ['cash', '現金'], ['line_pay', 'LINE Pay'], ['expense', '支出']] as const).map(([value, label]) =>
-        <button key={value} className={`btn ${channelFilter === value ? '' : 'btn-secondary'}`} onClick={() => setChannelFilter(value)}>{label}</button>)}
+        <button key={value} className={`btn btn-secondary ${channelFilter === value ? 'tab-active' : ''}`} onClick={() => setChannelFilter(value)}>{label}</button>)}
     </div>
 
     <div className="card finance-table-wrap">

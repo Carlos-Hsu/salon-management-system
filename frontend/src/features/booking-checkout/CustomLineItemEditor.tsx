@@ -12,7 +12,7 @@ export function CustomLineItemEditor({ items, onChange }: { items: CustomLineIte
     <div className="mt-3 space-y-3">{items.map((item, index) => <div className="grid gap-2 rounded-lg border border-[#3B3936] bg-[#1C1B1A] p-3 sm:grid-cols-[1fr_140px_52px]" key={item.id}>
       <label className="font-bold">自定義名稱<input aria-label={`臨時項目 ${index + 1} 自定義名稱`} className="mt-1 w-full" placeholder="例如：特殊護理" value={item.name} onChange={event => update(item.id, { name: event.target.value })}/></label>
       <label className="font-bold">單次金額<input aria-label={`臨時項目 ${index + 1} 單次金額`} className="mt-1 w-full" type="number" min="0" step="1" value={item.amount} onChange={event => update(item.id, { amount: Math.max(0, Number(event.target.value)) })}/></label>
-      <button type="button" className="min-h-12 min-w-12 self-end rounded-lg border border-[#8C3B30] text-[#D99B94]" aria-label={`移除臨時項目 ${index + 1}`} onClick={() => onChange(items.filter(candidate => candidate.id !== item.id))}><Trash2 className="mx-auto" size={20}/></button>
+      <button type="button" className="min-h-12 min-w-12 self-end rounded-xl border border-rose-500/20 bg-rose-500/10 text-rose-400 transition-colors hover:bg-rose-500/20" aria-label={`移除臨時項目 ${index + 1}`} onClick={() => onChange(items.filter(candidate => candidate.id !== item.id))}><Trash2 className="mx-auto" size={20}/></button>
     </div>)}</div>
   </section>;
 }
