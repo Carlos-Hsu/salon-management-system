@@ -1,15 +1,15 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { Home, Calendar as CalendarIcon, Users, Menu, Package, DollarSign, Settings } from 'lucide-react';
 import { api, Customer, Appointment, Product, TransactionItem, Service, BlockTime } from './api';
 import { Dashboard } from './components/Dashboard';
-import { CalendarView } from './components/CalendarView';
-import { CustomersView } from './components/CustomersView';
-import { ProductsView } from './components/ProductsView';
-import { FinanceView } from './components/FinanceView';
-import { SettingsView } from './components/SettingsView';
-import { BookingCheckoutPrototype } from './features/booking-checkout/BookingCheckoutPrototype';
 import { supabase } from './lib/supabase';
 
+const CalendarView = lazy(() => import('./components/CalendarView').then(module => ({ default: module.CalendarView })));
+const CustomersView = lazy(() => import('./components/CustomersView').then(module => ({ default: module.CustomersView })));
+const ProductsView = lazy(() => import('./components/ProductsView').then(module => ({ default: module.ProductsView })));
+const FinanceView = lazy(() => import('./components/FinanceView').then(module => ({ default: module.FinanceView })));
+const SettingsView = lazy(() => import('./components/SettingsView').then(module => ({ default: module.SettingsView })));
+const BookingCheckoutPrototype = lazy(() => import('./features/booking-checkout/BookingCheckoutPrototype').then(module => ({ default: module.BookingCheckoutPrototype })));
 
 function App() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
@@ -94,6 +94,7 @@ function App() {
       {/* 主要內容展示 */}
       <main className="main-content">
         {dataError && <p className="settings-error" role="alert">資料來源錯誤：{dataError}</p>}
+        <Suspense fallback={<div className="dashboard-loading card" role="status">正在載入功能模組…</div>}>
         {activeTab === 'dashboard' && (
           <Dashboard
             appointments={appointments}
@@ -140,6 +141,7 @@ function App() {
           />
         )}
         {activeTab === 'settings' && <SettingsView services={services} onRefresh={loadData} />}
+        </Suspense>
       </main>
 
       {/* 底部導航欄 */}

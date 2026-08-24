@@ -1,28 +1,23 @@
+-- Add profile display names without embedding an environment-specific admin email.
 begin;
 
 alter table public.profiles
   add column if not exists full_name text;
 
+-- Prefer Auth metadata; use the email local-part only as a display fallback.
 update public.profiles as profile
 set
-  full_name = '經營者',
-  updated_at = now()
+  full_name=coalesce(
+    nullif(btrim(auth_user.raw_user_meta_data->>'full_name'),''),
+    nullif(split_part(coalesce(auth_user.email,''),'@',1),'')
+  ),
+  updated_at=now()
 from auth.users as auth_user
-where profile.id = auth_user.id
-  and lower(auth_user.email) = lower('berb57606072@gmail.com');
+where profile.id=auth_user.id
+  and profile.full_name is null;
 
--- The existing profiles RLS policy still restricts updates to super_admin.
-grant update (full_name, updated_at)
-on table public.profiles
-to authenticated;
+-- RLS still limits profile changes; role assignment is handled by the
+-- authenticated-core migration rather than a hard-coded email address.
+grant update(full_name,updated_at) on table public.profiles to authenticated;
 
 commit;
-
-select
-  auth_user.email,
-  profile.full_name,
-  profile.role
-from auth.users as auth_user
-join public.profiles as profile
-  on profile.id = auth_user.id
-where lower(auth_user.email) = lower('berb57606072@gmail.com');

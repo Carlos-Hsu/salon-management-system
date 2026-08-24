@@ -29,16 +29,23 @@
 - [x] Defined `salon_developer` and `ui_ux_designer` responsibilities.
 - [x] Recorded business payment and closeout rules.
 - [x] Added project-local git review, project notes, and context compaction drafts.
+- [x] Fast-forwarded local `main` to remote v1.1.0 follow-up commit `4cdd607`.
+- [x] Added authenticated core RLS migration and removed canonical anonymous salon-data access.
+- [x] Integrated `profiles` and `system_settings` into the canonical schema.
+- [x] Replaced hard-coded admin email with first-user super-admin bootstrap.
+- [x] Added lazy-loaded feature views to reduce the main JavaScript chunk.
 
 ## Validation Status
 - `npm run lint --prefix frontend`: passed.
-- `npm run build --prefix frontend`: passed after `npm ci --prefix frontend`; Vite reports a non-blocking chunk-size warning (>500 kB).
-- `npm audit --prefix frontend --omit=dev`: 0 production vulnerabilities.
+- `npm run build --prefix frontend`: passed; main chunk reduced from about 528 kB to 424 kB and the previous chunk-size warning is resolved.
+- `npm test --prefix backend`: 11/11 passed.
+- `git diff --check`: passed.
+- `npm audit --prefix frontend --omit=dev`: previously reported 0 production vulnerabilities.
 - Pi project-extension discovery completed without loader errors.
-- Remote Supabase deployment status is not verified; do not apply migrations remotely without explicit target confirmation.
+- Remote Supabase deployment status is not verified; `20260827_authenticated_core_rls.sql` has not been applied remotely.
 
 ## Follow-up
-- Consider route/component code splitting to reduce the main Vite bundle.
+- Verify the target Supabase project identity, then apply migrations in order and run `supabase/tests/authenticated_rls_checks.sql`.
+- Configure a production `VITE_TURNSTILE_SITE_KEY` and matching Supabase Auth CAPTCHA secret before deployment.
 - Review the two development-dependency audit findings separately; do not use `npm audit fix --force` without compatibility review.
-- Add automated backend and PostgreSQL regression tests for overlap, lifecycle, checkout, inventory, and finance triggers.
-- Replace development-only anonymous Supabase RLS policies before production deployment.
+- Add automated PostgreSQL integration tests for overlap, lifecycle, checkout, inventory, and finance triggers.
