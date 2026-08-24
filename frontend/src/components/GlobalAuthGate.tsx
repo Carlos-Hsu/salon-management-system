@@ -24,8 +24,28 @@ declare global {
 export type GlobalAccess = {
   method: 'authenticated' | 'pin';
   user?: User;
+  email?: string;
+  fullName?: string;
+  role?: 'staff' | 'super_admin';
   readOnly: boolean;
 };
+
+async function getAuthenticatedAccess(user: User): Promise<GlobalAccess> {
+  const fallback: GlobalAccess = { method: 'authenticated', user, email: user.email, readOnly: false };
+  if (!supabase) return fallback;
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('role,email,full_name')
+    .eq('id', user.id)
+    .single();
+  if (error || !data) return fallback;
+  return {
+    ...fallback,
+    email: data.email ?? user.email,
+    fullName: data.full_name?.trim() || undefined,
+    role: data.role,
+  };
+}
 
 type GlobalAuthGateProps = {
   children: (access: GlobalAccess) => ReactNode;
@@ -91,13 +111,15 @@ export function GlobalAuthGate({ children }: GlobalAuthGateProps) {
       setLoading(false);
       return;
     }
-    void supabase.auth.getSession().then(({ data, error }) => {
+    void supabase.auth.getSession().then(async ({ data, error }) => {
       if (!mounted) return;
       if (error) {
         setMessageTone('error');
         setMessage('登入狀態讀取失敗，請重新登入。');
       } else if (data.session) {
-        setAccess({ method: 'authenticated', user: data.session.user, readOnly: false });
+        const profileAccess = await getAuthenticatedAccess(data.session.user);
+        if (!mounted) return;
+        setAccess(profileAccess);
       } else if (import.meta.env.DEV && sessionStorage.getItem(PIN_SESSION_KEY) === 'true') {
         setAccess({ method: 'pin', readOnly: true });
       }
@@ -108,7 +130,9 @@ export function GlobalAuthGate({ children }: GlobalAuthGateProps) {
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session) {
         sessionStorage.removeItem(PIN_SESSION_KEY);
         localStorage.removeItem(DEV_UNLOCK_KEY);
-        setAccess({ method: 'authenticated', user: session.user, readOnly: false });
+        setTimeout(() => {
+          void getAuthenticatedAccess(session.user).then(setAccess);
+        }, 0);
       }
     });
     return () => { mounted = false; listener.subscription.unsubscribe(); };
@@ -151,7 +175,7 @@ export function GlobalAuthGate({ children }: GlobalAuthGateProps) {
     localStorage.removeItem(LOGIN_FAILURE_KEY);
     setFailureCount(0);
     setPassword('');
-    setAccess({ method: 'authenticated', user: data.session.user, readOnly: false });
+    setAccess(await getAuthenticatedAccess(data.session.user));
     setChecking(false);
   };
 
@@ -177,14 +201,18 @@ export function GlobalAuthGate({ children }: GlobalAuthGateProps) {
 
   if (loading) return <main className="global-auth-shell"><section className="global-auth-loading"><LoaderCircle className="spin" /><p>正在確認安全登入狀態…</p></section></main>;
 
-  if (access) return <div className={access.readOnly ? 'global-readonly-mode' : ''}>
+  if (access) {
+    const isSuperAdmin = access.role === 'super_admin';
+    const identity = access.fullName ? `${access.fullName} (${access.email})` : access.email;
+    return <div className={access.readOnly ? 'global-readonly-mode' : ''}>
     <div className={`global-access-bar ${access.readOnly ? 'readonly' : 'authenticated'}`}>
-      <span><ShieldCheck size={17} /><strong>{access.readOnly ? '緊急 PIN 唯讀模式' : '已安全登入'}</strong>{access.user?.email && <small>｜{access.user.email}</small>}</span>
+      <span>{access.readOnly ? <ShieldCheck size={17} /> : <span aria-hidden="true">🛡️</span>}<strong>{access.readOnly ? '緊急 PIN 唯讀模式' : isSuperAdmin ? '超級管理者模式' : '已安全登入'}</strong>{identity && <small>｜{identity}</small>}</span>
       {access.readOnly && <p>僅供 localhost 緊急查看；所有 API 寫入已由前端阻擋，且未取得 Supabase Auth 權限。</p>}
       <button type="button" onClick={() => void lock()}>{access.readOnly ? '返回登入' : '安全登出'}</button>
     </div>
     {children(access)}
   </div>;
+  }
 
   return <main className="global-auth-shell">
     <section className="global-login-card card" aria-labelledby="global-login-title">
