@@ -22,6 +22,7 @@ function App() {
   const [incomeItems, setIncomeItems] = useState<TransactionItem[]>([]);
   const [expenseItems, setExpenseItems] = useState<TransactionItem[]>([]);
   const [dataError, setDataError] = useState('');
+  const [isDataLoading, setIsDataLoading] = useState(true);
 
   // Core data uses one explicit adapter; configured Supabase failures never fall back to SQLite.
   const loadData = async () => {
@@ -32,6 +33,8 @@ function App() {
       setAppointments(fetchedAppointments); setCustomers(fetchedCustomers); setProducts(fetchedProducts); setServices(fetchedServices); setBlocks(fetchedBlocks); setDataError('');
     } catch (err) {
       setDataError(err instanceof Error ? err.message : '核心資料載入失敗');
+    } finally {
+      setIsDataLoading(false);
     }
     // Finance uses Supabase when configured and the legacy Express API otherwise.
     try { const [income, expense] = await Promise.all([api.getIncomeItems(), api.getExpenseItems()]); setIncomeItems(income); setExpenseItems(expense); } catch { /* Finance view reports API errors when used. */ }
@@ -92,7 +95,13 @@ function App() {
       <main className="main-content">
         {dataError && <p className="settings-error" role="alert">資料來源錯誤：{dataError}</p>}
         {activeTab === 'dashboard' && (
-          <Dashboard onNavigate={setActiveTab} />
+          <Dashboard
+            appointments={appointments}
+            blocks={blocks}
+            customers={customers}
+            isLoading={isDataLoading}
+            onNavigate={setActiveTab}
+          />
         )}
         {activeTab === 'calendar' && (<>
           <div className="view-switcher mx-auto mb-4 flex max-w-7xl gap-2 p-2">

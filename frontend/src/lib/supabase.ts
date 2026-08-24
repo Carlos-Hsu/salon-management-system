@@ -4,6 +4,8 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 export type Database = {
   public: {
     Tables: {
+      profiles: { Row: { id: string; email: string | null; full_name: string | null; role: 'staff'|'super_admin'; created_at: string; updated_at: string }; Insert: { id: string; email?: string | null; full_name?: string | null; role?: 'staff'|'super_admin' }; Update: { email?: string | null; full_name?: string | null; role?: 'staff'|'super_admin'; updated_at?: string }; Relationships: [] };
+      system_settings: { Row: { key: string; value: unknown; description: string | null; updated_at: string; updated_by: string | null }; Insert: { key: string; value: unknown; description?: string | null; updated_at?: string; updated_by?: string | null }; Update: { value?: unknown; description?: string | null; updated_at?: string; updated_by?: string | null }; Relationships: [] };
       customers: { Row: { id: number; name: string; phone: string; email: string | null; note: string | null; created_at: string; updated_at: string }; Insert: { name: string; phone: string; email?: string | null; note?: string | null }; Update: { name?: string; phone?: string; email?: string | null; note?: string | null }; Relationships: [] };
       services: { Row: { id: number; name: string; duration_min: number; price: number; active: boolean; created_at: string; updated_at: string }; Insert: { name: string; duration_min: number; price: number; active?: boolean }; Update: { name?: string; duration_min?: number; price?: number; active?: boolean }; Relationships: [] };
       products: { Row: { id: number; name: string; price: number; stock: number; vendor: string | null; active: boolean; created_at: string; updated_at: string }; Insert: { name: string; price: number; stock: number; vendor?: string | null; active?: boolean }; Update: { name?: string; price?: number; stock?: number; vendor?: string | null; active?: boolean }; Relationships: [] };
@@ -16,6 +18,7 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      is_super_admin: { Args: Record<string, never>; Returns: boolean };
       create_appointment: { Args: { p_customer_id: number; p_service_id: number; p_start_time: string; p_status?: string; p_custom_items?: unknown[]; p_note?: string }; Returns: Database['public']['Tables']['appointments']['Row'] };
       update_appointment: { Args: { p_id: number; p_customer_id: number; p_service_id: number; p_start_time: string; p_status: string; p_custom_items?: unknown[]; p_note?: string }; Returns: Database['public']['Tables']['appointments']['Row'] };
       checkout_appointment: { Args: { p_appointment_id: number; p_idempotency_key: string; p_product_items?: unknown[]; p_custom_items?: unknown[]; p_payment_method?: string; p_discount?: number }; Returns: { order_id: number; total_amount: number }[] };

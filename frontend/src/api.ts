@@ -1,6 +1,11 @@
 import { isSupabaseConfigured, requireSupabase, unwrap } from './lib/supabase';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+let apiReadOnlyMode = true;
+
+export function setApiReadOnlyMode(readOnly: boolean): void {
+  apiReadOnlyMode = readOnly;
+}
 export interface Customer { id?: number; name: string; phone: string; email?: string; notes?: string; created_at?: string; last_visit?: string; last_spend?: number }
 export interface Service { id: number; name: string; duration_minutes: number; price: number; active: 0 | 1 }
 export interface Product { id?: number; name: string; price: number; stock_quantity: number; active: 0 | 1; vendor_name: string | null }
@@ -9,6 +14,7 @@ export type AppointmentStatus = 'pending' | 'confirmed' | 'in_service' | 'comple
 export interface Appointment { id?: number; customer_id: number; customerName?: string; service_id: number; service_name?: string; service?: string; duration_minutes?: number; start_time: string; end_time?: string; status: AppointmentStatus; price?: number; total_amount?: number; product_total?: number; products?: { product_id: number; quantity: number }[]; custom_items?: { name: string; amount: number }[]; surcharge_type?: 'none'|'percent'|'fixed'; surcharge_value?: number; notes?: string }
 export interface BlockTime { id?: number; start_time: string; end_time: string; reason?: string }
 export interface DashboardStats { todayAppointments: number; todayRevenue: number; totalCustomers: number }
+export interface SystemSettings { storeName: string; openingTime: string; closingTime: string; defaultPayment: 'cash'|'line_pay'; surchargeType: 'none'|'percent'|'fixed'; surchargeValue: number; reminderEnabled: boolean; reminderHours: number; autoBackup: boolean }
 export interface Transaction { id?: number; type: 'income'|'expense'; item_id: number; itemName?: string; amount: number; date?: string; notes?: string; customerName?: string; serviceName?: string; source?: 'manual'|'appointment'|'order'; order_id?: number|null; appointment_id?: number|null; editable?: boolean; payment_method?: 'cash'|'line_pay'; details?: { item_type:string; name:string; quantity:number; line_amount:number }[] }
 export interface TransactionItem { id: number; name: string }
 export interface Vendor { id?: number; name: string }
@@ -56,8 +62,38 @@ const expressApi = {
   getProducts: () => request<Product[]>('/products'), createProduct: (value: Omit<Product,'id'>) => request<void>('/products', json('POST', value)), updateProduct: (value: Product) => request<void>(`/products/${value.id}`, json('PUT', value)), deleteProduct: (id: number) => request<void>(`/products/${id}`, { method: 'DELETE' }), adjustProductStock: (id: number, quantity_delta: number, reason: string) => request<{stock_quantity:number}>(`/products/${id}/adjust`, json('POST', { quantity_delta, reason })), getProductStockHistory: (id: number) => request<ProductStockAdjustment[]>(`/products/${id}/history`),
 };
 
-export const api = {
+const defaultSystemSettings: SystemSettings = { storeName:'我的美髮工作室', openingTime:'10:00', closingTime:'20:00', defaultPayment:'cash', surchargeType:'none', surchargeValue:0, reminderEnabled:true, reminderHours:24, autoBackup:false };
+const textSetting = (value:unknown, fallback:string) => typeof value === 'string' ? value : fallback;
+const numberSetting = (value:unknown, fallback:number) => typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+const booleanSetting = (value:unknown, fallback:boolean) => typeof value === 'boolean' ? value : fallback;
+
+const apiImpl = {
   getStats: expressApi.getStats,
+  getSystemSettings: async ():Promise<SystemSettings> => {
+    if (!isSupabaseConfigured) {
+      const surcharge = await request<{type:'none'|'percent'|'fixed';value:number}>('/settings/surcharge');
+      return { ...defaultSystemSettings, surchargeType:surcharge.type, surchargeValue:surcharge.value };
+    }
+    const records = row(await sb().from('system_settings').select('key,value')) as {key:string;value:unknown}[];
+    const values = Object.fromEntries(records.map(record => [record.key, record.value]));
+    const payment = textSetting(values.default_payment, defaultSystemSettings.defaultPayment);
+    const surcharge = textSetting(values.holiday_surcharge_type, defaultSystemSettings.surchargeType);
+    return {
+      storeName:textSetting(values.store_name,defaultSystemSettings.storeName), openingTime:textSetting(values.opening_time,defaultSystemSettings.openingTime), closingTime:textSetting(values.closing_time,defaultSystemSettings.closingTime),
+      defaultPayment:payment==='line_pay'?'line_pay':'cash', surchargeType:surcharge==='percent'||surcharge==='fixed'?surcharge:'none', surchargeValue:numberSetting(values.holiday_surcharge_value,0),
+      reminderEnabled:booleanSetting(values.reminder_enabled,true), reminderHours:numberSetting(values.reminder_hours,24), autoBackup:booleanSetting(values.auto_backup,false),
+    };
+  },
+  updateSystemSettings: async (settings:SystemSettings) => {
+    if (!isSupabaseConfigured) return request<void>('/settings/surcharge',json('PUT',{type:settings.surchargeType,value:settings.surchargeValue}));
+    const {data:{user},error:userError}=await sb().auth.getUser(); if(userError)throw userError;if(!user)throw new Error('Super admin sign-in required.');
+    const pairs:Array<[string,unknown]>=[
+      ['store_name',settings.storeName],['opening_time',settings.openingTime],['closing_time',settings.closingTime],['default_payment',settings.defaultPayment],
+      ['holiday_surcharge_type',settings.surchargeType],['holiday_surcharge_value',settings.surchargeValue],['reminder_enabled',settings.reminderEnabled],['reminder_hours',settings.reminderHours],['auto_backup',settings.autoBackup],
+    ];
+    const values=pairs.map(([key,value])=>({key,value,updated_at:new Date().toISOString(),updated_by:user.id}));
+    row(await sb().from('system_settings').upsert(values,{onConflict:'key'}).select('key'));
+  },
   getAppointments: () => isSupabaseConfigured ? getSupabaseAppointments() : expressApi.getAppointments(),
   createAppointment: async (value: Omit<Appointment,'id'>) => isSupabaseConfigured ? mapAppointment(row(await sb().rpc('create_appointment', { p_customer_id:value.customer_id, p_service_id:value.service_id, p_start_time:value.start_time, p_status:value.status, p_custom_items:value.custom_items ?? [], p_note:value.notes })) as unknown as AppointmentQueryRow) : expressApi.createAppointment(value),
   updateAppointment: async (value: Appointment) => {
@@ -102,5 +138,17 @@ export const api = {
   updateTransaction: async (value:Transaction) => { if(!isSupabaseConfigured)return request<void>(`/transactions/${value.id}`,json('PUT',value));if(value.id===undefined||value.source!=='manual')throw new Error('Only manual finance records can be edited.');row(await sb().from('finance_records').update({amount:value.amount,notes:value.notes??null}).eq('id',value.id).eq('source','manual').select('id').single()); },
   deleteTransaction: async (id:number) => { if(!isSupabaseConfigured)return request<void>(`/transactions/${id}`,{method:'DELETE'});row(await sb().from('finance_records').delete().eq('id',id).eq('source','manual').select('id').single()); }
 };
+
+const MUTATION_METHOD = /^(create|update|delete|adjust|checkout)/;
+export const api = new Proxy(apiImpl, {
+  get(target, property, receiver) {
+    const value = Reflect.get(target, property, receiver);
+    if (typeof property !== 'string' || typeof value !== 'function' || !MUTATION_METHOD.test(property)) return value;
+    return (...args: unknown[]) => {
+      if (apiReadOnlyMode) throw new Error('緊急 PIN 模式為唯讀，請使用管理者帳號登入後再執行此操作。');
+      return (value as (...values: unknown[]) => unknown)(...args);
+    };
+  },
+});
 
 // Configured Supabase mode owns core salon and finance data; surcharge settings remain Express-only.
