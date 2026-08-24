@@ -26,13 +26,14 @@ Before production deployment, configure `VITE_TURNSTILE_SITE_KEY` in Vercel and 
 
 For a new project, execute [`schema.sql`](schema.sql) in the Supabase SQL Editor. It is the canonical schema and includes profiles, settings, RLS, triggers, RPCs, and grants.
 
-For an existing project, apply migrations in filename order. The authorization hardening migration is:
+For an existing project, apply migrations in filename order. The authorization hardening migrations are:
 
 ```text
 migrations/20260827_authenticated_core_rls.sql
+migrations/20260828_revoke_public_rpc_execute.sql
 ```
 
-After applying it, execute the read-only verification script:
+The follow-up migration removes PostgreSQL's default `PUBLIC` function execution grant, which is inherited by `anon`. After applying both, execute the read-only verification script:
 
 ```text
 tests/authenticated_rls_checks.sql

@@ -281,7 +281,7 @@ do $$ declare t text; begin foreach t in array array['customers','services','pro
 
 revoke all on public.customers,public.services,public.products,public.appointments,public.blocked_times,public.orders,public.order_items,public.stock_adjustments,public.finance_records,public.system_settings from anon;
 revoke usage,select on all sequences in schema public from anon;
-revoke execute on function public.create_appointment(bigint,bigint,timestamptz,text,jsonb,text), public.update_appointment(bigint,bigint,bigint,timestamptz,text,jsonb,text), public.adjust_product_stock(bigint,integer,text), public.update_product(bigint,text,bigint,integer,text,boolean), public.checkout_appointment(bigint,text,jsonb,jsonb,text,bigint) from anon;
+revoke execute on function public.create_appointment(bigint,bigint,timestamptz,text,jsonb,text), public.update_appointment(bigint,bigint,bigint,timestamptz,text,jsonb,text), public.adjust_product_stock(bigint,integer,text), public.update_product(bigint,text,bigint,integer,text,boolean), public.checkout_appointment(bigint,text,jsonb,jsonb,text,bigint) from public, anon;
 
 do $$ declare t text; begin foreach t in array array['customers','products','appointments','blocked_times','orders','order_items','stock_adjustments','finance_records'] loop execute format('drop policy if exists authenticated_access on public.%I',t); execute format('create policy authenticated_access on public.%I for all to authenticated using (auth.uid() is not null) with check (auth.uid() is not null)',t); end loop; end $$;
 
