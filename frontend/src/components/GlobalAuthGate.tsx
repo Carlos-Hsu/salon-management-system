@@ -202,11 +202,15 @@ export function GlobalAuthGate({ children }: GlobalAuthGateProps) {
   if (loading) return <main className="global-auth-shell"><section className="global-auth-loading"><LoaderCircle className="spin" /><p>正在確認安全登入狀態…</p></section></main>;
 
   if (access) {
-    const isSuperAdmin = access.role === 'super_admin';
-    const identity = access.fullName ? `${access.fullName} (${access.email})` : access.email;
+    const identity = access.fullName || access.email || '已登入使用者';
+    const identityEmail = access.fullName && access.email ? access.email : undefined;
     return <div className={access.readOnly ? 'global-readonly-mode' : ''}>
     <div className={`global-access-bar ${access.readOnly ? 'readonly' : 'authenticated'}`}>
-      <span>{access.readOnly ? <ShieldCheck size={17} /> : <span aria-hidden="true">🛡️</span>}<strong>{access.readOnly ? '緊急 PIN 唯讀模式' : isSuperAdmin ? '超級管理者模式' : '已安全登入'}</strong>{identity && <small>｜{identity}</small>}</span>
+      <span>
+        {access.readOnly ? <ShieldCheck size={17} /> : <span aria-hidden="true">🛡️</span>}
+        <strong>{access.readOnly ? '緊急 PIN 唯讀模式' : identity}</strong>
+        {!access.readOnly && identityEmail && <small>({identityEmail})</small>}
+      </span>
       {access.readOnly && <p>僅供 localhost 緊急查看；所有 API 寫入已由前端阻擋，且未取得 Supabase Auth 權限。</p>}
       <button type="button" onClick={() => void lock()}>{access.readOnly ? '返回登入' : '安全登出'}</button>
     </div>
