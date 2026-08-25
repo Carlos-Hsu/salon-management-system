@@ -38,12 +38,14 @@ test('surcharge uses integer minor units and deterministic rounding', () => {
   assert.throws(()=>surchargeAmount(100,'percent',-1),/Invalid/);
 });
 
-test('state machine rejects skipping, reversal, and terminal changes', async t => {
+test('state machine rejects invalid transitions but permits terminal record corrections', async t => {
   const f=await fixture(t); const app=await createAppointment(f.db,base(f));
   await assert.rejects(updateAppointment(f.db,app.id,{status:'completed'}),/Illegal/);
   await updateAppointment(f.db,app.id,{status:'confirmed'});
   await assert.rejects(updateAppointment(f.db,app.id,{status:'pending'}),/Illegal/);
   await updateAppointment(f.db,app.id,{status:'cancelled'});
+  await updateAppointment(f.db,app.id,{status:'cancelled',notes:'corrected terminal note'});
+  assert.equal((await f.db.get('SELECT notes FROM appointments WHERE id=?',[app.id])).notes,'corrected terminal note');
   await assert.rejects(updateAppointment(f.db,app.id,{status:'confirmed'}),/Illegal/);
 });
 
@@ -53,6 +55,8 @@ test('completion creates exactly one order/income and decrements stock once', as
   const completions = await Promise.allSettled([updateAppointment(f.db,app.id,{status:'completed'}), updateAppointment(f.db,app.id,{status:'completed'})]);
   assert.equal(completions.filter(result => result.status === 'fulfilled').length, 1);
   await updateAppointment(f.db,app.id,{status:'completed'});
+  await updateAppointment(f.db,app.id,{status:'completed',notes:'corrected after checkout'});
+  assert.equal((await f.db.get('SELECT notes FROM appointments WHERE id=?',[app.id])).notes,'corrected after checkout');
   assert.equal((await f.db.get('SELECT COUNT(*) count FROM orders')).count,1);
   const tx=await f.db.get('SELECT COUNT(*) count,MAX(amount) amount FROM transactions'); assert.equal(tx.count,1); assert.equal(tx.amount,1210);
   assert.equal((await f.db.get('SELECT stock_quantity FROM products WHERE id=?',[f.product_id])).stock_quantity,1);

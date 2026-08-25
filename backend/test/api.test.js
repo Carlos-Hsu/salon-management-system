@@ -33,6 +33,24 @@ test('appointment API derives duration/price and reports overlap as 409', async 
   assert.equal(response.status, 409);
 });
 
+test('completed appointments remain editable and DELETE archives their audit history', async t => {
+  const { db, url } = await apiServer(t);
+  const customer = await db.run("INSERT INTO customers(name) VALUES ('Client')");
+  const service = await db.run("INSERT INTO services(name,duration_minutes,price) VALUES ('Cut',60,900)");
+  const appointment = await db.run(`INSERT INTO appointments(customer_id,service_id,start_time,end_time,status,price)
+    VALUES (?,?,?,?,?,?)`, [customer.lastID, service.lastID, '2031-02-03T10:00:00Z', '2031-02-03T11:00:00Z', 'completed', 900]);
+
+  let response = await fetch(`${url}/appointments/${appointment.lastID}`, { method: 'PUT', ...json({ status: 'completed', notes: 'mobile correction' }) });
+  assert.equal(response.status, 200);
+  assert.equal((await db.get('SELECT notes FROM appointments WHERE id=?', [appointment.lastID])).notes, 'mobile correction');
+
+  response = await fetch(`${url}/appointments/${appointment.lastID}`, { method: 'DELETE' });
+  assert.equal(response.status, 204);
+  assert.ok((await db.get('SELECT deleted_at FROM appointments WHERE id=?', [appointment.lastID])).deleted_at);
+  response = await fetch(`${url}/appointments`);
+  assert.equal((await response.json()).length, 0);
+});
+
 test('service active accepts numeric zero and can be restored', async t => {
   const { db, url } = await apiServer(t);
   const service = await db.run("INSERT INTO services(name,duration_minutes,price) VALUES ('Cut',60,900)");

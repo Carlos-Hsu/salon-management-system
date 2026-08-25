@@ -55,8 +55,7 @@ async function updateAppointment(db, id, body) {
   const old = await db.get('SELECT * FROM appointments WHERE id=?', [id]);
   if (!old) fail('Appointment not found', 404);
   const nextStatus = body.status || old.status;
-  const transition = assertTransition(old.status, nextStatus);
-  if (transition === 'idempotent') return appointmentView(db, id);
+  assertTransition(old.status, nextStatus);
   const service = await getService(db, body.service_id || old.service_id);
   const startDate = new Date(body.start_time || old.start_time);
   if (Number.isNaN(startDate.valueOf())) fail('Invalid start_time');

@@ -33,7 +33,7 @@ async function migrate(db) {
       stylist_id INTEGER NOT NULL DEFAULT 1, service_id INTEGER,
       service TEXT, start_time TEXT NOT NULL, end_time TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending', price INTEGER NOT NULL DEFAULT 0,
-      surcharge_type TEXT, surcharge_value INTEGER, notes TEXT,
+      surcharge_type TEXT, surcharge_value INTEGER, notes TEXT, deleted_at TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(customer_id) REFERENCES customers(id),
       FOREIGN KEY(stylist_id) REFERENCES stylists(id), FOREIGN KEY(service_id) REFERENCES services(id)
@@ -75,7 +75,7 @@ async function migrate(db) {
   const additions = [
     ['stylist_id', 'INTEGER NOT NULL DEFAULT 1'], ['service_id', 'INTEGER'],
     ['surcharge_type', 'TEXT'], ['surcharge_value', 'INTEGER'],
-    ['created_at', 'TEXT']
+    ['created_at', 'TEXT'], ['deleted_at', 'TEXT']
   ];
   for (const [name, definition] of additions) {
     if (!columns.some((column) => column.name === name)) await db.run(`ALTER TABLE appointments ADD COLUMN ${name} ${definition}`);

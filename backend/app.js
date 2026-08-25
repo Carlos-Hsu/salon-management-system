@@ -13,21 +13,26 @@ function createApp(db) {
   app.use((_req, _res, next) => db.ready.then(() => next(), next));
 
   app.get('/api/dashboard/stats', asyncRoute(async (_req, res) => res.json(await db.get(`SELECT
-    (SELECT COUNT(*) FROM appointments WHERE date(start_time)=date('now') AND status<>'cancelled') todayAppointments,
+    (SELECT COUNT(*) FROM appointments WHERE deleted_at IS NULL AND date(start_time)=date('now') AND status<>'cancelled') todayAppointments,
     COALESCE((SELECT SUM(amount) FROM transactions WHERE type='income' AND date(date)=date('now')),0) todayRevenue,
     (SELECT COUNT(*) FROM customers) totalCustomers`))));
 
   app.get('/api/appointments', asyncRoute(async (req, res) => {
-    const where = req.query.start && req.query.end ? 'WHERE datetime(a.start_time)<datetime(?) AND datetime(a.end_time)>datetime(?)' : '';
-    const params = where ? [req.query.end, req.query.start] : [];
+    const conditions = ['a.deleted_at IS NULL']; const params = [];
+    if (req.query.start && req.query.end) { conditions.push('datetime(a.start_time)<datetime(?) AND datetime(a.end_time)>datetime(?)'); params.push(req.query.end, req.query.start); }
     res.json(await db.all(`SELECT a.*,c.name customerName,s.name service_name,s.duration_minutes,
       COALESCE((SELECT SUM(quantity*unit_price) FROM appointment_products ap WHERE ap.appointment_id=a.id),0) product_total
-      FROM appointments a JOIN customers c ON c.id=a.customer_id LEFT JOIN services s ON s.id=a.service_id ${where} ORDER BY a.start_time`, params));
+      FROM appointments a JOIN customers c ON c.id=a.customer_id LEFT JOIN services s ON s.id=a.service_id
+      WHERE ${conditions.join(' AND ')} ORDER BY a.start_time`, params));
   }));
   app.post('/api/appointments', asyncRoute(async (req, res) => res.status(201).json(await createAppointment(db, req.body))));
   app.put('/api/appointments/:id', asyncRoute(async (req, res) => res.json(await updateAppointment(db, Number(req.params.id), req.body))));
   app.patch('/api/appointments/:id', asyncRoute(async (req, res) => res.json(await updateAppointment(db, Number(req.params.id), req.body))));
-  app.delete('/api/appointments/:id', asyncRoute(async (req, res) => res.json(await updateAppointment(db, Number(req.params.id), { status: 'cancelled' }))));
+  app.delete('/api/appointments/:id', asyncRoute(async (req, res) => {
+    const result = await db.run('UPDATE appointments SET deleted_at=CURRENT_TIMESTAMP WHERE id=? AND deleted_at IS NULL', [req.params.id]);
+    if (!result.changes) return res.status(404).json({ error: 'Appointment not found' });
+    res.status(204).end();
+  }));
 
   app.get('/api/services', asyncRoute(async (_req, res) => res.json(await db.all('SELECT * FROM services ORDER BY name'))));
   app.post('/api/services', asyncRoute(async (req, res) => {
@@ -57,7 +62,7 @@ function createApp(db) {
   }));
   app.put('/api/block-times/:id', asyncRoute(async (req, res) => {
     const [start, end] = normalizeInterval(req.body.start_time, req.body.end_time);
-    const appointment = await db.get(`SELECT id FROM appointments WHERE stylist_id=1 AND status<>'cancelled'
+    const appointment = await db.get(`SELECT id FROM appointments WHERE stylist_id=1 AND status<>'cancelled' AND deleted_at IS NULL
       AND datetime(start_time)<datetime(?) AND datetime(end_time)>datetime(?) LIMIT 1`, [end, start]);
     const other = await db.get(`SELECT id FROM block_times WHERE id<>? AND stylist_id=1 AND datetime(start_time)<datetime(?) AND datetime(end_time)>datetime(?)`, [req.params.id, end, start]);
     if (appointment || other) throw Object.assign(new Error('Block time conflicts with existing schedule'), { status: 409 });
@@ -67,11 +72,11 @@ function createApp(db) {
   app.delete('/api/block-times/:id', asyncRoute(async (req, res) => { await db.run('DELETE FROM block_times WHERE id=?', [req.params.id]); res.status(204).end(); }));
 
   app.get('/api/customers', asyncRoute(async (_req, res) => res.json(await db.all(`SELECT c.*,
-    (SELECT MAX(a.start_time) FROM appointments a WHERE a.customer_id=c.id AND a.status='completed') last_visit,
+    (SELECT MAX(a.start_time) FROM appointments a WHERE a.customer_id=c.id AND a.status='completed' AND a.deleted_at IS NULL) last_visit,
     COALESCE((SELECT o.total FROM orders o JOIN appointments a ON a.id=o.appointment_id WHERE a.customer_id=c.id ORDER BY o.created_at DESC LIMIT 1),0) last_spend
     FROM customers c ORDER BY c.name`))));
   app.get('/api/customers/:id/history', asyncRoute(async (req, res) => res.json(await db.all(`SELECT a.*,s.name service_name,o.total
-    FROM appointments a LEFT JOIN services s ON s.id=a.service_id LEFT JOIN orders o ON o.appointment_id=a.id WHERE a.customer_id=? ORDER BY a.start_time DESC`, [req.params.id]))));
+    FROM appointments a LEFT JOIN services s ON s.id=a.service_id LEFT JOIN orders o ON o.appointment_id=a.id WHERE a.customer_id=? AND a.deleted_at IS NULL ORDER BY a.start_time DESC`, [req.params.id]))));
   app.post('/api/customers', asyncRoute(async (req, res) => { if (!req.body.name) throw Object.assign(new Error('Name required'), { status: 400 }); const result = await db.run('INSERT INTO customers(name,phone,email,notes) VALUES (?,?,?,?)', [req.body.name, req.body.phone || '', req.body.email || '', req.body.notes || '']); res.status(201).json({ id: result.lastID }); }));
   app.put('/api/customers/:id', asyncRoute(async (req, res) => { await db.run('UPDATE customers SET name=?,phone=?,email=?,notes=? WHERE id=?', [req.body.name, req.body.phone || '', req.body.email || '', req.body.notes || '', req.params.id]); res.json({ ok: true }); }));
   app.delete('/api/customers/:id', asyncRoute(async (req, res) => { try { await db.run('DELETE FROM customers WHERE id=?', [req.params.id]); res.status(204).end(); } catch { throw Object.assign(new Error('Customer has appointment history'), { status: 409 }); } }));

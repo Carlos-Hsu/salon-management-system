@@ -44,7 +44,7 @@ async function getSupabaseTransactions(start?:string,end?:string) {
   return row(await query).map(value=>{const record=value as unknown as FinanceRecordQueryRow;const paymentMethod=record.orders?(record.orders.payment_method==='cash'?'cash':'line_pay'):undefined;const paymentLabel=paymentMethod==='cash'?'現金':paymentMethod==='line_pay'?'LINE Pay':null;return {id:record.id,type:record.type,item_id:record.type==='income'?1:expenseItems.find(item=>item.name===record.category)?.id??1,itemName:record.category,amount:record.amount,date:record.occurred_at,notes:paymentLabel??record.notes??'',customerName:record.appointments?.customers?.name,serviceName:record.appointments?.services?.name,source:record.source,order_id:record.order_id,appointment_id:record.appointment_id,editable:record.source==='manual',payment_method:paymentMethod,details:record.orders?.order_items??[]} satisfies Transaction;});
 }
 async function getSupabaseAppointments(customerId?: number) {
-  let query = sb().from('appointments').select(appointmentSelect).order('start_time');
+  let query = sb().from('appointments').select(appointmentSelect).is('deleted_at', null).order('start_time');
   if (customerId !== undefined) query = query.eq('customer_id', customerId);
   return row(await query) .map(value => mapAppointment(value as unknown as AppointmentQueryRow));
 }
@@ -104,8 +104,7 @@ const apiImpl = {
   },
   deleteAppointment: async (id: number) => {
     if (!isSupabaseConfigured) return expressApi.deleteAppointment(id);
-    const value = await getAppointment(id);
-    await api.updateAppointment({ ...value, status:'cancelled' });
+    row(await sb().from('appointments').update({ deleted_at:new Date().toISOString() }).eq('id',id).is('deleted_at',null).select('id').single());
   },
   checkoutAppointment: async (appointmentId:number, idempotencyKey:string, products:{product_id:number;quantity:number}[], customItems:{name:string;amount:number}[], paymentMethod:string, discount=0) => {
     if (!isSupabaseConfigured) throw new Error('Atomic checkout is available only in configured Supabase mode.');
