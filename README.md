@@ -181,6 +181,10 @@ npx supabase db push
 
 請勿在未確認 Project Ref、備份及目標環境前執行 migration 或建立新的 CLI link。
 
+## 目前限制與未來規劃
+
+- LINE Pay 支付功能目前僅提供前端結帳分類標記，尚未串接正式 LINE Pay 第三方支付 API（例如 LINE Pay Checkout API／Merchant API）。
+
 ## 測試與正式建置
 
 ```bash
