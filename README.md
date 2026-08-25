@@ -116,9 +116,9 @@ npm run dev -- --host 0.0.0.0
 前端範例位於 [`frontend/.env.example`](frontend/.env.example)：
 
 ```env
-VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
-VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_PUBLISHABLE_OR_ANON_KEY
-VITE_TURNSTILE_SITE_KEY=YOUR_CLOUDFLARE_TURNSTILE_SITE_KEY
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_anon_key
+VITE_TURNSTILE_SITE_KEY=your_cloudflare_turnstile_site_key
 
 # 僅在使用本機 Express 相容 API 時需要
 # VITE_API_URL=http://localhost:5000/api
