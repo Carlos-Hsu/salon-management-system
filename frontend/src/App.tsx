@@ -106,10 +106,10 @@ function App() {
         )}
         {activeTab === 'calendar' && (<>
           <div className="view-switcher mx-auto mb-4 flex max-w-7xl gap-2 p-2">
-            <button className={`min-h-12 flex-1 px-4 text-base font-bold ${calendarPreview?'active':''}`} onClick={() => setCalendarPreview(true)}>預約操作預覽</button>
-            <button className={`min-h-12 flex-1 px-4 text-base font-bold ${!calendarPreview?'active':''}`} onClick={() => setCalendarPreview(false)}>正式預約行事曆</button>
+            <button className={`min-h-12 flex-1 px-4 text-base font-bold ${calendarPreview?'active':''}`} onClick={() => setCalendarPreview(true)}>快速預約操作</button>
+            <button className={`min-h-12 flex-1 px-4 text-base font-bold ${!calendarPreview?'active':''}`} onClick={() => setCalendarPreview(false)}>行事曆檢視</button>
           </div>
-          {calendarPreview ? <BookingCheckoutPrototype appointments={appointments} customers={customers} services={services} products={products} onCreate={handleCreateAppointment} onRefresh={loadData} /> : <CalendarView
+          {calendarPreview ? <BookingCheckoutPrototype appointments={appointments} customers={customers} services={services} products={products} onCreate={handleCreateAppointment} onUpdate={handleUpdateAppointment} onDelete={handleDeleteAppointment} onRefresh={loadData} /> : <CalendarView
             appointments={appointments} 
             customers={customers} 
             products={products}
