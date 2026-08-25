@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { createAppointment, updateAppointment } = require('./salon-service');
+const { createAppointment, updateAppointment, archiveAppointment } = require('./salon-service');
 const { normalizeInterval, collision } = require('./domain');
 
 function asyncRoute(handler) { return (req, res, next) => Promise.resolve(handler(req, res)).catch(next); }
@@ -14,7 +14,7 @@ function createApp(db) {
 
   app.get('/api/dashboard/stats', asyncRoute(async (_req, res) => res.json(await db.get(`SELECT
     (SELECT COUNT(*) FROM appointments WHERE deleted_at IS NULL AND date(start_time)=date('now') AND status<>'cancelled') todayAppointments,
-    COALESCE((SELECT SUM(amount) FROM transactions WHERE type='income' AND date(date)=date('now')),0) todayRevenue,
+    COALESCE((SELECT SUM(amount) FROM transactions WHERE voided_at IS NULL AND type='income' AND date(date)=date('now')),0) todayRevenue,
     (SELECT COUNT(*) FROM customers) totalCustomers`))));
 
   app.get('/api/appointments', asyncRoute(async (req, res) => {
@@ -29,8 +29,7 @@ function createApp(db) {
   app.put('/api/appointments/:id', asyncRoute(async (req, res) => res.json(await updateAppointment(db, Number(req.params.id), req.body))));
   app.patch('/api/appointments/:id', asyncRoute(async (req, res) => res.json(await updateAppointment(db, Number(req.params.id), req.body))));
   app.delete('/api/appointments/:id', asyncRoute(async (req, res) => {
-    const result = await db.run('UPDATE appointments SET deleted_at=CURRENT_TIMESTAMP WHERE id=? AND deleted_at IS NULL', [req.params.id]);
-    if (!result.changes) return res.status(404).json({ error: 'Appointment not found' });
+    await archiveAppointment(db, Number(req.params.id));
     res.status(204).end();
   }));
 
@@ -73,7 +72,7 @@ function createApp(db) {
 
   app.get('/api/customers', asyncRoute(async (_req, res) => res.json(await db.all(`SELECT c.*,
     (SELECT MAX(a.start_time) FROM appointments a WHERE a.customer_id=c.id AND a.status='completed' AND a.deleted_at IS NULL) last_visit,
-    COALESCE((SELECT o.total FROM orders o JOIN appointments a ON a.id=o.appointment_id WHERE a.customer_id=c.id ORDER BY o.created_at DESC LIMIT 1),0) last_spend
+    COALESCE((SELECT o.total FROM orders o JOIN appointments a ON a.id=o.appointment_id WHERE a.customer_id=c.id AND o.voided_at IS NULL ORDER BY o.created_at DESC LIMIT 1),0) last_spend
     FROM customers c ORDER BY c.name`))));
   app.get('/api/customers/:id/history', asyncRoute(async (req, res) => res.json(await db.all(`SELECT a.*,s.name service_name,o.total
     FROM appointments a LEFT JOIN services s ON s.id=a.service_id LEFT JOIN orders o ON o.appointment_id=a.id WHERE a.customer_id=? AND a.deleted_at IS NULL ORDER BY a.start_time DESC`, [req.params.id]))));
@@ -142,7 +141,7 @@ function createApp(db) {
 
   app.get('/api/income_items', asyncRoute(async (_req, res) => res.json(await db.all('SELECT * FROM income_items'))));
   app.get('/api/expense_items', asyncRoute(async (_req, res) => res.json(await db.all('SELECT * FROM expense_items'))));
-  app.get('/api/transactions', asyncRoute(async (req, res) => { let where=''; const params=[]; if(req.query.startDate&&req.query.endDate){where='WHERE date(t.date) BETWEEN date(?) AND date(?)';params.push(req.query.startDate,req.query.endDate);} res.json(await db.all(`SELECT t.*,CASE WHEN t.type='income' THEN i.name ELSE e.name END itemName FROM transactions t LEFT JOIN income_items i ON t.type='income' AND i.id=t.item_id LEFT JOIN expense_items e ON t.type='expense' AND e.id=t.item_id ${where} ORDER BY t.date DESC`,params)); }));
+  app.get('/api/transactions', asyncRoute(async (req, res) => { const conditions=['t.voided_at IS NULL']; const params=[]; if(req.query.startDate&&req.query.endDate){conditions.push('date(t.date) BETWEEN date(?) AND date(?)');params.push(req.query.startDate,req.query.endDate);} res.json(await db.all(`SELECT t.*,CASE WHEN t.type='income' THEN i.name ELSE e.name END itemName FROM transactions t LEFT JOIN income_items i ON t.type='income' AND i.id=t.item_id LEFT JOIN expense_items e ON t.type='expense' AND e.id=t.item_id WHERE ${conditions.join(' AND ')} ORDER BY t.date DESC`,params)); }));
   app.post('/api/transactions', asyncRoute(async (req,res)=>{const result=await db.run('INSERT INTO transactions(type,item_id,amount,date,notes) VALUES (?,?,?,?,?)',[req.body.type,req.body.item_id,integer(req.body.amount,'amount'),req.body.date||new Date().toISOString(),req.body.notes||'']);res.status(201).json({id:result.lastID});}));
   app.put('/api/transactions/:id', asyncRoute(async(req,res)=>{await db.run('UPDATE transactions SET amount=?,notes=? WHERE id=?',[integer(req.body.amount,'amount'),req.body.notes||'',req.params.id]);res.json({ok:true});}));
   app.delete('/api/transactions/:id', asyncRoute(async(req,res)=>{await db.run('DELETE FROM transactions WHERE id=?',[req.params.id]);res.status(204).end();}));

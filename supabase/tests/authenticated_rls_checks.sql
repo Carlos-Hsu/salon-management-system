@@ -1,4 +1,4 @@
--- Run after 20260827_authenticated_core_rls.sql in the target Supabase project.
+-- Run after all migrations through 20260830_void_archived_appointment_financials.sql.
 do $$
 declare table_name text; rpc_signature text;
 begin
@@ -26,7 +26,8 @@ begin
     'public.update_appointment(bigint,bigint,bigint,timestamp with time zone,text,jsonb,text)',
     'public.adjust_product_stock(bigint,integer,text)',
     'public.update_product(bigint,text,bigint,integer,text,boolean)',
-    'public.checkout_appointment(bigint,text,jsonb,jsonb,text,bigint)'
+    'public.checkout_appointment(bigint,text,jsonb,jsonb,text,bigint)',
+    'public.archive_appointment(bigint)'
   ] loop
     if has_function_privilege('anon',rpc_signature,'EXECUTE') then
       raise exception 'Anonymous RPC execution privilege remains on %',rpc_signature;

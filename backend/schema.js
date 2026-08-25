@@ -57,7 +57,8 @@ async function migrate(db) {
     CREATE TABLE IF NOT EXISTS orders (
       id INTEGER PRIMARY KEY AUTOINCREMENT, appointment_id INTEGER NOT NULL UNIQUE,
       subtotal INTEGER NOT NULL, surcharge INTEGER NOT NULL, total INTEGER NOT NULL,
-      status TEXT NOT NULL DEFAULT 'paid', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      status TEXT NOT NULL DEFAULT 'paid', voided_at TEXT, void_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(appointment_id) REFERENCES appointments(id)
     );
     CREATE TABLE IF NOT EXISTS income_items (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
@@ -66,7 +67,7 @@ async function migrate(db) {
     CREATE TABLE IF NOT EXISTS transactions (
       id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, item_id INTEGER NOT NULL,
       amount INTEGER NOT NULL, date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, notes TEXT,
-      source_type TEXT, source_id INTEGER
+      source_type TEXT, source_id INTEGER, voided_at TEXT, void_reason TEXT
     );
   `);
 
@@ -92,8 +93,12 @@ async function migrate(db) {
     FOREIGN KEY(product_id) REFERENCES products(id));
     CREATE INDEX IF NOT EXISTS product_stock_adjustments_product_idx
       ON product_stock_adjustments(product_id, created_at DESC);`);
+  const orderColumns = await db.all('PRAGMA table_info(orders)');
+  for (const [name, definition] of [['voided_at', 'TEXT'], ['void_reason', 'TEXT']]) {
+    if (!orderColumns.some((column) => column.name === name)) await db.run(`ALTER TABLE orders ADD COLUMN ${name} ${definition}`);
+  }
   const transactionColumns = await db.all('PRAGMA table_info(transactions)');
-  for (const [name, definition] of [['source_type', 'TEXT'], ['source_id', 'INTEGER']]) {
+  for (const [name, definition] of [['source_type', 'TEXT'], ['source_id', 'INTEGER'], ['voided_at', 'TEXT'], ['void_reason', 'TEXT']]) {
     if (!transactionColumns.some((column) => column.name === name)) await db.run(`ALTER TABLE transactions ADD COLUMN ${name} ${definition}`);
   }
   await db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS transactions_source_unique

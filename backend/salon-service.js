@@ -95,4 +95,27 @@ async function updateAppointment(db, id, body) {
   return appointmentView(db, id);
 }
 
-module.exports = { createAppointment, updateAppointment, appointmentView };
+async function archiveAppointment(db, id) {
+  return db.transaction(async () => {
+    const appointment = await db.get('SELECT * FROM appointments WHERE id=?', [id]);
+    if (!appointment) fail('Appointment not found', 404);
+    const order = await db.get('SELECT * FROM orders WHERE appointment_id=?', [id]);
+    const voidedAt = appointment.deleted_at || new Date().toISOString();
+    if (order && !order.voided_at) {
+      const lines = await db.all('SELECT product_id,quantity FROM appointment_products WHERE appointment_id=?', [id]);
+      for (const line of lines) {
+        await db.run('UPDATE products SET stock_quantity=stock_quantity+? WHERE id=?', [line.quantity, line.product_id]);
+        const product = await db.get('SELECT stock_quantity FROM products WHERE id=?', [line.product_id]);
+        if (!product) fail('Product not found while reversing checkout', 409);
+        await db.run(`INSERT INTO product_stock_adjustments(product_id,quantity_delta,resulting_quantity,reason)
+          VALUES (?,?,?,?)`, [line.product_id, line.quantity, product.stock_quantity, `Voided order ${order.id}`]);
+      }
+      await db.run("UPDATE orders SET status='voided',voided_at=?,void_reason='Appointment archived' WHERE id=? AND voided_at IS NULL", [voidedAt, order.id]);
+      await db.run("UPDATE transactions SET voided_at=?,void_reason='Appointment archived' WHERE source_type='order' AND source_id=? AND voided_at IS NULL", [voidedAt, order.id]);
+    }
+    await db.run('UPDATE appointments SET deleted_at=COALESCE(deleted_at,?) WHERE id=?', [voidedAt, id]);
+    return { id, voided_at: voidedAt };
+  });
+}
+
+module.exports = { createAppointment, updateAppointment, archiveAppointment, appointmentView };

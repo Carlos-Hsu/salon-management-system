@@ -39,7 +39,7 @@ const incomeItems:TransactionItem[]=[{id:1,name:'其他收入'}];
 const expenseItems:TransactionItem[]=[{id:1,name:'營運支出'},{id:2,name:'進貨成本'},{id:3,name:'租金／水電'}];
 const nextDate=(date:string)=>{const value=new Date(`${date}T00:00:00Z`);value.setUTCDate(value.getUTCDate()+1);return value.toISOString().slice(0,10);};
 async function getSupabaseTransactions(start?:string,end?:string) {
-  let query=sb().from('finance_records').select('id,type,category,amount,occurred_at,notes,source,order_id,appointment_id,appointments(customers(name),services(name)),orders(payment_method,order_items(item_type,name,quantity,line_amount))').order('occurred_at',{ascending:false});
+  let query=sb().from('finance_records').select('id,type,category,amount,occurred_at,notes,source,order_id,appointment_id,appointments(customers(name),services(name)),orders(payment_method,order_items(item_type,name,quantity,line_amount))').is('voided_at',null).order('occurred_at',{ascending:false});
   if(start&&end) query=query.gte('occurred_at',`${start}T00:00:00+08:00`).lt('occurred_at',`${nextDate(end)}T00:00:00+08:00`);
   return row(await query).map(value=>{const record=value as unknown as FinanceRecordQueryRow;const paymentMethod=record.orders?(record.orders.payment_method==='cash'?'cash':'line_pay'):undefined;const paymentLabel=paymentMethod==='cash'?'現金':paymentMethod==='line_pay'?'LINE Pay':null;return {id:record.id,type:record.type,item_id:record.type==='income'?1:expenseItems.find(item=>item.name===record.category)?.id??1,itemName:record.category,amount:record.amount,date:record.occurred_at,notes:paymentLabel??record.notes??'',customerName:record.appointments?.customers?.name,serviceName:record.appointments?.services?.name,source:record.source,order_id:record.order_id,appointment_id:record.appointment_id,editable:record.source==='manual',payment_method:paymentMethod,details:record.orders?.order_items??[]} satisfies Transaction;});
 }
@@ -104,7 +104,7 @@ const apiImpl = {
   },
   deleteAppointment: async (id: number) => {
     if (!isSupabaseConfigured) return expressApi.deleteAppointment(id);
-    row(await sb().from('appointments').update({ deleted_at:new Date().toISOString() }).eq('id',id).is('deleted_at',null).select('id').single());
+    row(await sb().rpc('archive_appointment',{p_appointment_id:id}));
   },
   checkoutAppointment: async (appointmentId:number, idempotencyKey:string, products:{product_id:number;quantity:number}[], customItems:{name:string;amount:number}[], paymentMethod:string, discount=0) => {
     if (!isSupabaseConfigured) throw new Error('Atomic checkout is available only in configured Supabase mode.');

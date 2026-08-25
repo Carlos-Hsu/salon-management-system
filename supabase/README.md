@@ -32,9 +32,10 @@ For an existing project, apply migrations in filename order. The authorization h
 migrations/20260827_authenticated_core_rls.sql
 migrations/20260828_revoke_public_rpc_execute.sql
 migrations/20260829_edit_and_archive_appointments.sql
+migrations/20260830_void_archived_appointment_financials.sql
 ```
 
-The authorization follow-up removes PostgreSQL's default `PUBLIC` function execution grant, which is inherited by `anon`. The appointment follow-up allows corrections that preserve a terminal status and archives deleted appointments with `deleted_at`, retaining order, finance, and stock audit records. After applying the migrations, execute the read-only verification script:
+The authorization follow-up removes PostgreSQL's default `PUBLIC` function execution grant, which is inherited by `anon`. The appointment follow-ups allow corrections that preserve a terminal status and atomically archive deleted appointments: linked orders and finance records are marked void, checkout stock is restored once, and audit rows remain available without contributing to active finance totals. After applying the migrations, execute the read-only verification script:
 
 ```text
 tests/authenticated_rls_checks.sql

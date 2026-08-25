@@ -33,22 +33,41 @@ test('appointment API derives duration/price and reports overlap as 409', async 
   assert.equal(response.status, 409);
 });
 
-test('completed appointments remain editable and DELETE archives their audit history', async t => {
+test('deleting a completed appointment voids income and restores checkout stock exactly once', async t => {
   const { db, url } = await apiServer(t);
   const customer = await db.run("INSERT INTO customers(name) VALUES ('Client')");
   const service = await db.run("INSERT INTO services(name,duration_minutes,price) VALUES ('Cut',60,900)");
-  const appointment = await db.run(`INSERT INTO appointments(customer_id,service_id,start_time,end_time,status,price)
-    VALUES (?,?,?,?,?,?)`, [customer.lastID, service.lastID, '2031-02-03T10:00:00Z', '2031-02-03T11:00:00Z', 'completed', 900]);
+  const product = await db.run("INSERT INTO products(name,price,stock_quantity) VALUES ('Wax',100,5)");
+  let response = await fetch(`${url}/appointments`, { method: 'POST', ...json({ customer_id:customer.lastID, service_id:service.lastID, start_time:'2031-02-03T10:00:00Z', products:[{product_id:product.lastID,quantity:2}] }) });
+  const appointment = await response.json();
+  for (const status of ['confirmed', 'in_service', 'completed']) {
+    response = await fetch(`${url}/appointments/${appointment.id}`, { method: 'PUT', ...json({ status }) });
+    assert.equal(response.status, 200);
+  }
+  assert.equal((await db.get('SELECT stock_quantity FROM products WHERE id=?', [product.lastID])).stock_quantity, 3);
+  assert.equal((await db.get('SELECT SUM(amount) amount FROM transactions WHERE voided_at IS NULL')).amount, 1100);
 
-  let response = await fetch(`${url}/appointments/${appointment.lastID}`, { method: 'PUT', ...json({ status: 'completed', notes: 'mobile correction' }) });
+  response = await fetch(`${url}/appointments/${appointment.id}`, { method: 'PUT', ...json({ status:'completed', notes:'mobile correction' }) });
   assert.equal(response.status, 200);
-  assert.equal((await db.get('SELECT notes FROM appointments WHERE id=?', [appointment.lastID])).notes, 'mobile correction');
-
-  response = await fetch(`${url}/appointments/${appointment.lastID}`, { method: 'DELETE' });
+  assert.equal((await db.get('SELECT notes FROM appointments WHERE id=?', [appointment.id])).notes, 'mobile correction');
+  response = await fetch(`${url}/appointments/${appointment.id}`, { method: 'DELETE' });
   assert.equal(response.status, 204);
-  assert.ok((await db.get('SELECT deleted_at FROM appointments WHERE id=?', [appointment.lastID])).deleted_at);
-  response = await fetch(`${url}/appointments`);
-  assert.equal((await response.json()).length, 0);
+
+  const archived = await db.get('SELECT deleted_at FROM appointments WHERE id=?', [appointment.id]);
+  const order = await db.get('SELECT id,status,voided_at FROM orders WHERE appointment_id=?', [appointment.id]);
+  const transaction = await db.get('SELECT voided_at FROM transactions WHERE source_type=? AND source_id=?', ['order', order.id]);
+  assert.ok(archived.deleted_at);
+  assert.equal(order.status, 'voided'); assert.ok(order.voided_at); assert.ok(transaction.voided_at);
+  assert.equal((await db.get('SELECT stock_quantity FROM products WHERE id=?', [product.lastID])).stock_quantity, 5);
+  assert.equal((await db.get("SELECT COUNT(*) count FROM product_stock_adjustments WHERE reason LIKE 'Voided order %'")).count, 1);
+
+  response = await fetch(`${url}/transactions`);
+  assert.deepEqual(await response.json(), []);
+  response = await fetch(`${url}/dashboard/stats`);
+  assert.equal((await response.json()).todayRevenue, 0);
+  response = await fetch(`${url}/appointments/${appointment.id}`, { method: 'DELETE' });
+  assert.equal(response.status, 204);
+  assert.equal((await db.get('SELECT stock_quantity FROM products WHERE id=?', [product.lastID])).stock_quantity, 5);
 });
 
 test('service active accepts numeric zero and can be restored', async t => {
