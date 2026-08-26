@@ -1,15 +1,31 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Download, FileSpreadsheet, LoaderCircle } from 'lucide-react';
-import { format, startOfMonth } from 'date-fns';
+import { endOfMonth, endOfYear, format, startOfMonth, startOfQuarter, startOfYear, subMonths, subYears } from 'date-fns';
 import { api, type OrderStatus, type PaymentMethod, type ReconciliationFilters, type ReconciliationStaff } from '../../api';
 import { paymentMethodLabels } from './types';
 
 type ExportFormat = 'csv' | 'xlsx';
+type DatePreset = { id:string; label:string; startDate:string; endDate:string };
+const dateValue = (date:Date) => format(date, 'yyyy-MM-dd');
+
+function createDatePresets(today:Date):DatePreset[] {
+  const lastMonth = subMonths(today, 1);
+  const lastYear = subYears(today, 1);
+  return [
+    { id:'this-month', label:'本月', startDate:dateValue(startOfMonth(today)), endDate:dateValue(today) },
+    { id:'last-month', label:'上個月', startDate:dateValue(startOfMonth(lastMonth)), endDate:dateValue(endOfMonth(lastMonth)) },
+    { id:'this-quarter', label:'本季', startDate:dateValue(startOfQuarter(today)), endDate:dateValue(today) },
+    { id:'last-six-months', label:'近半年', startDate:dateValue(startOfMonth(subMonths(today, 6))), endDate:dateValue(today) },
+    { id:'year-to-date', label:'今年至今', startDate:dateValue(startOfYear(today)), endDate:dateValue(today) },
+    { id:'last-year', label:'去年全年', startDate:dateValue(startOfYear(lastYear)), endDate:dateValue(endOfYear(lastYear)) },
+  ];
+}
 
 export function ReconciliationExport() {
+  const presets = useMemo(() => createDatePresets(new Date()), []);
   const [filters, setFilters] = useState<ReconciliationFilters>({
-    startDate: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
-    endDate: format(new Date(), 'yyyy-MM-dd'),
+    startDate: presets[0].startDate,
+    endDate: presets[0].endDate,
   });
   const [staff, setStaff] = useState<ReconciliationStaff[]>([]);
   const [exporting, setExporting] = useState<ExportFormat | null>(null);
@@ -26,6 +42,11 @@ export function ReconciliationExport() {
   }, []);
 
   const update = (patch: Partial<ReconciliationFilters>) => setFilters(current => ({ ...current, ...patch }));
+  const applyPreset = (preset:DatePreset) => {
+    update({ startDate:preset.startDate, endDate:preset.endDate });
+    setIsError(false);
+    setMessage(`已套用「${preset.label}」日期區間。`);
+  };
 
   const exportReport = async (exportFormat: ExportFormat) => {
     setMessage('');
@@ -63,6 +84,13 @@ export function ReconciliationExport() {
     <div className="panel-heading reconciliation-export-heading">
       <div><FileSpreadsheet size={21} /><span><h3 id="reconciliation-export-title">匯出對帳單</h3><p>依結帳時間篩選並下載會計用 CSV 或 Excel。</p></span></div>
       {exporting && <span className="reconciliation-loading" role="status"><LoaderCircle size={17} className="spin" />正在產生對帳單…</span>}
+    </div>
+    <div className="reconciliation-presets" aria-label="快選報表日期區間">
+      <span>快選時間</span>
+      <div>{presets.map(preset => {
+        const active = filters.startDate === preset.startDate && filters.endDate === preset.endDate;
+        return <button key={preset.id} type="button" className={`btn btn-secondary${active ? ' tab-active' : ''}`} aria-pressed={active} onClick={() => applyPreset(preset)}>{preset.label}</button>;
+      })}</div>
     </div>
     <div className="reconciliation-filters">
       <label>開始日期<input type="date" value={filters.startDate} onChange={event => update({ startDate: event.target.value })} /></label>
