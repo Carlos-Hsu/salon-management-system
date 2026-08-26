@@ -69,7 +69,12 @@ export function ReconciliationExport() {
         exportReconciliationCsv(rows, filename);
       } else {
         const { exportReconciliationXlsx } = await import('./exportXlsx');
-        await exportReconciliationXlsx(rows, filename);
+        const handledByName = filters.handledBy
+          ? staff.find(person => person.id === filters.handledBy)?.full_name ?? '指定人員'
+          : '全體人員';
+        await exportReconciliationXlsx(rows, filename, {
+          startDate:filters.startDate, endDate:filters.endDate, handledByName,
+        });
       }
       setMessage(`已匯出 ${rows.length} 筆對帳資料。`);
     } catch (error) {
