@@ -14,9 +14,15 @@ export type AppointmentStatus = 'pending' | 'confirmed' | 'in_service' | 'comple
 export interface Appointment { id?: number; customer_id: number; customerName?: string; service_id: number; service_name?: string; service?: string; duration_minutes?: number; start_time: string; end_time?: string; status: AppointmentStatus; price?: number; total_amount?: number; product_total?: number; products?: { product_id: number; quantity: number }[]; custom_items?: { name: string; amount: number }[]; surcharge_type?: 'none'|'percent'|'fixed'; surcharge_value?: number; notes?: string }
 export interface BlockTime { id?: number; start_time: string; end_time: string; reason?: string }
 export interface DashboardStats { todayAppointments: number; todayRevenue: number; totalCustomers: number }
-export interface SystemSettings { storeName: string; openingTime: string; closingTime: string; defaultPayment: 'cash'|'line_pay'; surchargeType: 'none'|'percent'|'fixed'; surchargeValue: number; reminderEnabled: boolean; reminderHours: number; autoBackup: boolean }
-export interface Transaction { id?: number; type: 'income'|'expense'; item_id: number; itemName?: string; amount: number; date?: string; notes?: string; customerName?: string; serviceName?: string; source?: 'manual'|'appointment'|'order'; order_id?: number|null; appointment_id?: number|null; editable?: boolean; payment_method?: 'cash'|'line_pay'; details?: { item_type:string; name:string; quantity:number; line_amount:number }[] }
+export type PaymentMethod = 'cash'|'credit_card'|'line_pay'|'bank_transfer';
+export type OrderStatus = 'paid'|'refunded';
+export interface SystemSettings { storeName: string; openingTime: string; closingTime: string; defaultPayment: PaymentMethod; surchargeType: 'none'|'percent'|'fixed'; surchargeValue: number; reminderEnabled: boolean; reminderHours: number; autoBackup: boolean }
+export interface Transaction { id?: number; type: 'income'|'expense'; item_id: number; itemName?: string; amount: number; date?: string; notes?: string; customerName?: string; serviceName?: string; source?: 'manual'|'appointment'|'order'; order_id?: number|null; appointment_id?: number|null; editable?: boolean; payment_method?: PaymentMethod; details?: { item_type:string; name:string; quantity:number; line_amount:number }[] }
 export interface TransactionItem { id: number; name: string }
+export interface ReconciliationFilters { startDate:string; endDate:string; status?:OrderStatus; paymentMethod?:PaymentMethod; handledBy?:string }
+export interface ReconciliationStaff { id:string; full_name:string }
+export interface ReconciliationItem { item_type:'service'|'product'|'custom'; name:string; quantity:number; unit_amount:number; line_amount:number }
+export interface ReconciliationRow { order_id:number; appointment_id:number; transaction_at:string; order_status:OrderStatus; customer_name:string; customer_phone:string; item_details:ReconciliationItem[]; original_amount:number; discount_amount:number; final_amount:number; payment_method:PaymentMethod; handled_by:string|null; handled_by_name:string; notes:string|null }
 export interface Vendor { id?: number; name: string }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -41,7 +47,7 @@ const nextDate=(date:string)=>{const value=new Date(`${date}T00:00:00Z`);value.s
 async function getSupabaseTransactions(start?:string,end?:string) {
   let query=sb().from('finance_records').select('id,type,category,amount,occurred_at,notes,source,order_id,appointment_id,appointments(customers(name),services(name)),orders(payment_method,order_items(item_type,name,quantity,line_amount))').is('voided_at',null).order('occurred_at',{ascending:false});
   if(start&&end) query=query.gte('occurred_at',`${start}T00:00:00+08:00`).lt('occurred_at',`${nextDate(end)}T00:00:00+08:00`);
-  return row(await query).map(value=>{const record=value as unknown as FinanceRecordQueryRow;const paymentMethod=record.orders?(record.orders.payment_method==='cash'?'cash':'line_pay'):undefined;const paymentLabel=paymentMethod==='cash'?'現金':paymentMethod==='line_pay'?'LINE Pay':null;return {id:record.id,type:record.type,item_id:record.type==='income'?1:expenseItems.find(item=>item.name===record.category)?.id??1,itemName:record.category,amount:record.amount,date:record.occurred_at,notes:paymentLabel??record.notes??'',customerName:record.appointments?.customers?.name,serviceName:record.appointments?.services?.name,source:record.source,order_id:record.order_id,appointment_id:record.appointment_id,editable:record.source==='manual',payment_method:paymentMethod,details:record.orders?.order_items??[]} satisfies Transaction;});
+  return row(await query).map(value=>{const record=value as unknown as FinanceRecordQueryRow;const paymentMethod=record.orders?.payment_method as PaymentMethod|undefined;const paymentLabel=paymentMethod?({cash:'現金',credit_card:'信用卡',line_pay:'LINE Pay',bank_transfer:'轉帳'} as const)[paymentMethod]:null;return {id:record.id,type:record.type,item_id:record.type==='income'?1:expenseItems.find(item=>item.name===record.category)?.id??1,itemName:record.category,amount:record.amount,date:record.occurred_at,notes:paymentLabel??record.notes??'',customerName:record.appointments?.customers?.name,serviceName:record.appointments?.services?.name,source:record.source,order_id:record.order_id,appointment_id:record.appointment_id,editable:record.source==='manual',payment_method:paymentMethod,details:record.orders?.order_items??[]} satisfies Transaction;});
 }
 async function getSupabaseAppointments(customerId?: number) {
   let query = sb().from('appointments').select(appointmentSelect).is('deleted_at', null).order('start_time');
@@ -80,7 +86,7 @@ const apiImpl = {
     const surcharge = textSetting(values.holiday_surcharge_type, defaultSystemSettings.surchargeType);
     return {
       storeName:textSetting(values.store_name,defaultSystemSettings.storeName), openingTime:textSetting(values.opening_time,defaultSystemSettings.openingTime), closingTime:textSetting(values.closing_time,defaultSystemSettings.closingTime),
-      defaultPayment:payment==='line_pay'?'line_pay':'cash', surchargeType:surcharge==='percent'||surcharge==='fixed'?surcharge:'none', surchargeValue:numberSetting(values.holiday_surcharge_value,0),
+      defaultPayment:(['cash','credit_card','line_pay','bank_transfer'] as const).find(value=>value===payment)??'cash', surchargeType:surcharge==='percent'||surcharge==='fixed'?surcharge:'none', surchargeValue:numberSetting(values.holiday_surcharge_value,0),
       reminderEnabled:booleanSetting(values.reminder_enabled,true), reminderHours:numberSetting(values.reminder_hours,24), autoBackup:booleanSetting(values.auto_backup,false),
     };
   },
@@ -133,6 +139,14 @@ const apiImpl = {
   getIncomeItems: () => isSupabaseConfigured ? Promise.resolve(incomeItems) : request<TransactionItem[]>('/income_items'),
   getExpenseItems: () => isSupabaseConfigured ? Promise.resolve(expenseItems) : request<TransactionItem[]>('/expense_items'),
   getTransactions: (start?:string,end?:string) => isSupabaseConfigured ? getSupabaseTransactions(start,end) : request<Transaction[]>(`/transactions${start&&end?`?startDate=${start}&endDate=${end}`:''}`),
+  getReconciliationStaff: async ():Promise<ReconciliationStaff[]> => {
+    if(!isSupabaseConfigured)throw new Error('匯出對帳單僅支援已設定 Supabase 的登入模式。');
+    return row(await sb().rpc('get_reconciliation_staff',{}));
+  },
+  getReconciliationReport: async (filters:ReconciliationFilters):Promise<ReconciliationRow[]> => {
+    if(!isSupabaseConfigured)throw new Error('匯出對帳單僅支援已設定 Supabase 的登入模式。');
+    return row(await sb().rpc('get_reconciliation_report',{p_start_date:filters.startDate,p_end_date:filters.endDate,p_status:filters.status??null,p_payment_method:filters.paymentMethod??null,p_handled_by:filters.handledBy??null})) as ReconciliationRow[];
+  },
   createTransaction: async (value:Transaction) => { if(!isSupabaseConfigured)return request<void>('/transactions',json('POST',value));const category=(value.type==='income'?incomeItems:expenseItems).find(item=>item.id===value.item_id)?.name??(value.type==='income'?'其他收入':'營運支出');row(await sb().from('finance_records').insert({type:value.type,category,amount:value.amount,occurred_at:value.date??new Date().toISOString(),notes:value.notes??null,source:'manual'}).select('id').single()); },
   updateTransaction: async (value:Transaction) => { if(!isSupabaseConfigured)return request<void>(`/transactions/${value.id}`,json('PUT',value));if(value.id===undefined||value.source!=='manual')throw new Error('Only manual finance records can be edited.');row(await sb().from('finance_records').update({amount:value.amount,notes:value.notes??null}).eq('id',value.id).eq('source','manual').select('id').single()); },
   deleteTransaction: async (id:number) => { if(!isSupabaseConfigured)return request<void>(`/transactions/${id}`,{method:'DELETE'});row(await sb().from('finance_records').delete().eq('id',id).eq('source','manual').select('id').single()); }

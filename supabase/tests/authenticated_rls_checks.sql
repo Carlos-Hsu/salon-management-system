@@ -27,7 +27,9 @@ begin
     'public.adjust_product_stock(bigint,integer,text)',
     'public.update_product(bigint,text,bigint,integer,text,boolean)',
     'public.checkout_appointment(bigint,text,jsonb,jsonb,text,bigint)',
-    'public.archive_appointment(bigint)'
+    'public.archive_appointment(bigint)',
+    'public.get_reconciliation_staff()',
+    'public.get_reconciliation_report(date,date,text,text,uuid)
   ] loop
     if has_function_privilege('anon',rpc_signature,'EXECUTE') then
       raise exception 'Anonymous RPC execution privilege remains on %',rpc_signature;

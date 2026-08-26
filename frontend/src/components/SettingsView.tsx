@@ -16,7 +16,7 @@ import { SettingsAccessGate, type SettingsAccess } from './SettingsAccessGate';
 
 type SettingsTab = 'general' | 'services' | 'notifications';
 type SurchargeType = 'none' | 'percent' | 'fixed';
-type PaymentMethod = 'cash' | 'line_pay';
+type PaymentMethod = 'cash' | 'credit_card' | 'line_pay' | 'bank_transfer';
 type ServiceDraft = Pick<Service, 'id' | 'name' | 'duration_minutes' | 'price' | 'active'>;
 
 type LocalPreferences = {
@@ -232,7 +232,7 @@ function SettingsContent({ services, onRefresh, access }: { services: Service[];
           <label><Clock3 size={16} />開始營業<input type="time" value={preferences.openingTime} onChange={event => updatePreferences({ openingTime: event.target.value })} /></label>
           <label><Clock3 size={16} />結束營業<input type="time" value={preferences.closingTime} onChange={event => updatePreferences({ closingTime: event.target.value })} /></label>
         </div>
-        <label><CreditCard size={16} />預設付款方式<select value={preferences.defaultPayment} onChange={event => updatePreferences({ defaultPayment: event.target.value as PaymentMethod })}><option value="cash">現金</option><option value="line_pay">LINE Pay</option></select></label>
+        <label><CreditCard size={16} />預設付款方式<select value={preferences.defaultPayment} onChange={event => updatePreferences({ defaultPayment: event.target.value as PaymentMethod })}><option value="cash">現金</option><option value="credit_card">信用卡</option><option value="line_pay">LINE Pay</option><option value="bank_transfer">轉帳</option></select></label>
       </article>
 
       <article className="card settings-section-card surcharge-card">

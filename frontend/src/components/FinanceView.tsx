@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, WalletCards, Banknote, Smartphone, Eye, Edit, Trash2, X } from 'lucide-react';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { api, Transaction, TransactionItem } from '../api';
+import { ReconciliationExport } from '../features/reconciliation/ReconciliationExport';
 import { supabase } from '../lib/supabase';
 
 interface FinanceViewProps {
@@ -17,7 +18,7 @@ const currency = (value: number) => new Intl.NumberFormat('zh-TW', {
 }).format(value);
 
 const contentBadge = (transaction: Transaction) => {
-  if (transaction.type === 'income') return transaction.payment_method === 'cash' ? '現金' : 'LINE Pay';
+  if (transaction.type === 'income') return ({ cash:'現金', credit_card:'信用卡', line_pay:'LINE Pay', bank_transfer:'轉帳' } as const)[transaction.payment_method ?? 'cash'];
   return /髮品|藥水|耗材|進貨/.test(transaction.itemName ?? '') ? '髮品進貨' : '固定支出';
 };
 
@@ -150,6 +151,8 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ incomeItems, expenseIt
       </div>
       <small>支付管道合計：{currency(cashIncome + linePayIncome)}{cashIncome + linePayIncome !== totalIncome ? '（尚有未分類收入）' : ''}</small>
     </section>
+
+    <ReconciliationExport />
 
     <div className="card finance-channel-filter" aria-label="支付與類型篩選">
       {([['all', '全部'], ['cash', '現金'], ['line_pay', 'LINE Pay'], ['expense', '支出']] as const).map(([value, label]) =>
