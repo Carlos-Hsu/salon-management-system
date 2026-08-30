@@ -181,6 +181,83 @@ npx supabase db push
 
 請勿在未確認 Project Ref、備份及目標環境前執行 migration 或建立新的 CLI link。
 
+## Supabase 每週備份維運手冊
+
+備份 workflow 位於 [`.github/workflows/backup.yml`](.github/workflows/backup.yml)，每週日台北時間 `00:00` 自動執行，也可由 GitHub Actions 頁面手動觸發。流程會使用 PostgreSQL 17 的 `pg_dump` 匯出 `public` schema，建立 SHA-256 checksum，並透過 Gmail SMTP 寄送 `.sql` 與 `.sql.sha256` 兩個附件。
+
+### 必要的 GitHub Repository Secrets
+
+請至 **Repository → Settings → Secrets and variables → Actions → Repository secrets** 設定下列八項。Secret 值不得寫入 README、commit、issue、workflow log 或前端環境變數。
+
+| Secret | 範例／用途 |
+| --- | --- |
+| `SUPABASE_DB_URL` | Supabase **Session pooler / URI**；供 GitHub IPv4 runner 執行 `pg_dump`。 |
+| `SMTP_SERVER` | Gmail 使用 `smtp.gmail.com`。 |
+| `SMTP_PORT` | Gmail SSL 使用 `465`。 |
+| `SMTP_SECURE` | Gmail SSL 使用 `true`。 |
+| `SMTP_USERNAME` | 寄件 Gmail 地址。 |
+| `SMTP_PASSWORD` | Google 帳戶產生的 16 位「應用程式密碼」，不是一般登入密碼。 |
+| `BACKUP_EMAIL_TO` | 接收備份的信箱。 |
+| `BACKUP_EMAIL_FROM` | 寄件信箱，通常與 `SMTP_USERNAME` 相同。 |
+
+### 建立 `SUPABASE_DB_URL`
+
+1. 開啟 Supabase Project Dashboard，按頁面上方 **Connect**。
+2. 選擇 **Direct → Session pooler → URI**。GitHub-hosted runner 通常使用 IPv4，不要使用預設為 IPv6 的 Direct connection。
+3. 複製完整 URI；格式類似：
+
+   ```text
+   postgresql://postgres.<project-ref>:[YOUR-PASSWORD]@aws-0-<region>.pooler.supabase.com:5432/postgres
+   ```
+
+4. 將 `[YOUR-PASSWORD]` 換成 Database Password；密碼含特殊字元時必須先 percent-encode。
+5. 將完整 URI 存為 GitHub Secret `SUPABASE_DB_URL`，不得存入 `.env.local` 或 repo。
+
+Supabase 不會再次顯示既有 Database Password。若忘記密碼，只能在 Database Settings 重設。重設前必須盤點 DBeaver、pgAdmin、Prisma、外部後端、報表工具與其他 PostgreSQL 直連；所有使用舊密碼的連線都必須更新。前端透過 Supabase URL 與 anon key 使用 Data API，不應使用 Database Password。
+
+### Gmail SMTP 設定
+
+1. Gmail 帳戶必須啟用兩步驟驗證。
+2. 至 Google 帳戶的 **應用程式密碼**，建立用途為 `GitHub Supabase Backup` 的密碼。
+3. 將產生的 16 位密碼直接存入 `SMTP_PASSWORD`；禁止使用 Gmail 一般登入密碼。
+4. workflow 使用 runner 內建的 Python `smtplib` 寄信，不使用會接觸 Database／SMTP Secrets 的第三方寄信 action。
+
+### 首次設定與變更後的必要驗收
+
+建立 workflow、調整 Secrets、重設 Database Password 或修改寄信流程後，必須完成以下整條驗證，不能只確認 workflow YAML 已提交：
+
+1. 手動執行 **Actions → Supabase weekly backup → Run workflow → main**。
+2. 確認 `Validate required secrets` 成功；workflow 會一次列出所有缺少的 Secrets。
+3. 確認 `Export public schema and data` 成功，且 `pg_dump` 產生非空 `.sql` 與 `.sha256`。
+4. 確認 `Email SQL backup` 成功，Actions 頁面沒有 error 或 deprecation warning。
+5. 親自開啟收件 Gmail，確認主旨為 `Salon Management System｜Supabase 每週備份`。
+6. 確認郵件有兩個附件，且 Gmail 安全掃描通過：
+
+   ```text
+   supabase-public-<UTC timestamp>-run-<run id>.sql
+   supabase-public-<UTC timestamp>-run-<run id>.sql.sha256
+   ```
+
+只有「GitHub Actions 成功」且「收件匣實際收到兩個附件」同時成立，才算備份功能完成驗收。
+
+### 常見失敗與處理方式
+
+| 錯誤 | 原因 | 處理方式 |
+| --- | --- | --- |
+| `Missing required repository secret: ...` | Repository Secrets 未完整設定。 | 對照八項清單補齊，再手動執行；不要逐週等待排程暴露下一個缺項。 |
+| `Password authentication failed` | Database Password 錯誤、重設後仍使用舊 URI，或密碼特殊字元未編碼。 | 重新建立 Session pooler URI 並更新 `SUPABASE_DB_URL`。 |
+| Direct connection 無法連線 | Direct endpoint 預設使用 IPv6，而 runner／網路只有 IPv4。 | 改用 Session pooler port `5432`。 |
+| `could not open output file "/backup/": Is a directory` | Docker 容器沒有收到 `BACKUP_FILE` 值。 | 必須使用 `-e BACKUP_FILE="$BACKUP_FILE"` 明確傳值，不可只寫 `-e BACKUP_FILE`。 |
+| SMTP authentication failed | 使用一般 Gmail 密碼、應用程式密碼失效，或 Google 帳戶未啟用兩步驟驗證。 | 重新產生應用程式密碼並更新 `SMTP_PASSWORD`。 |
+| Workflow 成功但未見郵件 | 郵件被分類、延遲或收件設定錯誤。 | 搜尋完整主旨、檢查垃圾郵件，並核對 `BACKUP_EMAIL_TO`；未驗證附件前不得視為完成。 |
+
+### Secret 輪替後檢查
+
+- Database Password、Gmail 密碼或應用程式密碼變更後，立即更新對應 GitHub Secret。
+- GitHub Secret 只能確認名稱與更新時間，無法讀回值；請同步安全保存在密碼管理器。
+- 每次輪替後立即手動執行 workflow 並完成收件驗證。
+- 不得以「下週排程再看看」取代當下驗證。
+
 ## 目前限制與未來規劃
 
 - LINE Pay 支付功能目前僅提供前端結帳分類標記，尚未串接正式 LINE Pay 第三方支付 API（例如 LINE Pay Checkout API／Merchant API）。
