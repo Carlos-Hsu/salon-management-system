@@ -68,18 +68,51 @@ jobs:
           sha256sum "backups/${BACKUP_FILE}" > "backups/${BACKUP_FILE}.sha256"
 
       - name: Email SQL backup
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: ${{ secrets.SMTP_SERVER }}
-          server_port: ${{ secrets.SMTP_PORT }}
-          secure: ${{ secrets.SMTP_SECURE }}
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "Salon Management System｜Supabase 每週備份"
-          to: ${{ secrets.BACKUP_EMAIL_TO }}
-          from: ${{ secrets.BACKUP_EMAIL_FROM }}
-          body: |
-            Supabase public schema 的結構與資料備份已完成。
-            Repository: ${{ github.repository }}
-            Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          attachments: ${{ env.BACKUP_PATH }},${{ env.BACKUP_PATH }}.sha256
+        env:
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_SECURE: ${{ secrets.SMTP_SECURE }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          BACKUP_EMAIL_TO: ${{ secrets.BACKUP_EMAIL_TO }}
+          BACKUP_EMAIL_FROM: ${{ secrets.BACKUP_EMAIL_FROM }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 - <<'PY'
+          import mimetypes
+          import os
+          import smtplib
+          import ssl
+          from email.message import EmailMessage
+          from pathlib import Path
+
+          message = EmailMessage()
+          message["Subject"] = "Salon Management System｜Supabase 每週備份"
+          message["From"] = os.environ["BACKUP_EMAIL_FROM"]
+          message["To"] = os.environ["BACKUP_EMAIL_TO"]
+          message.set_content(
+              "Supabase public schema 的結構與資料備份已完成。\n"
+              f"Repository: {os.environ['REPOSITORY']}\n"
+              f"Workflow run: {os.environ['RUN_URL']}\n"
+          )
+
+          for filename in (os.environ["BACKUP_PATH"], os.environ["BACKUP_PATH"] + ".sha256"):
+              path = Path(filename)
+              content_type, _ = mimetypes.guess_type(path.name)
+              maintype, subtype = (content_type or "application/octet-stream").split("/", 1)
+              message.add_attachment(path.read_bytes(), maintype=maintype, subtype=subtype, filename=path.name)
+
+          server = os.environ["SMTP_SERVER"]
+          port = int(os.environ["SMTP_PORT"])
+          context = ssl.create_default_context()
+          if os.environ["SMTP_SECURE"].lower() in {"1", "true", "yes"}:
+              smtp = smtplib.SMTP_SSL(server, port, context=context)
+          else:
+              smtp = smtplib.SMTP(server, port)
+              smtp.starttls(context=context)
+
+          with smtp:
+              smtp.login(os.environ["SMTP_USERNAME"], os.environ["SMTP_PASSWORD"])
+              smtp.send_message(message)
+          PY
