@@ -55,7 +55,7 @@ jobs:
           docker run --rm \
             -v "$PWD/backups:/backup" \
             -e SUPABASE_DB_URL \
-            -e BACKUP_FILE \
+            -e BACKUP_FILE="$BACKUP_FILE" \
             postgres:17-alpine \
             sh -c 'pg_dump "$SUPABASE_DB_URL" \
               --schema=public \
