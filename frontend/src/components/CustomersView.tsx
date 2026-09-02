@@ -13,6 +13,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ customers, onCreat
   const [searchQuery, setSearchQuery] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   // 表單狀態
   const [name, setName] = useState('');
@@ -62,6 +63,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ customers, onCreat
     if (confirm('確定要永久刪除此客戶嗎？此操作會一併永久刪除所有歷史預約、消費與財務紀錄，且無法復原。')) {
       try {
         await onDeleteCustomer(id);
+        setToast('客戶及其關聯歷史資料已永久刪除。');
       } catch (error) {
         alert(error instanceof Error ? `刪除客戶失敗：${error.message}` : '刪除客戶失敗');
       }
@@ -135,6 +137,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ customers, onCreat
           </div>
         ))}
       </div>
+
+      {toast && (
+        <div role="status" style={{ position: 'fixed', right: '1rem', bottom: '1rem', zIndex: 1100, maxWidth: 'min(360px, calc(100vw - 2rem))', padding: '0.9rem 1rem', borderRadius: '10px', background: 'var(--success-color)', color: '#fff', boxShadow: '0 10px 30px rgba(0,0,0,.2)' }}>
+          {toast}
+          <button aria-label="關閉通知" onClick={() => setToast(null)} style={{ marginLeft: '0.75rem', color: 'inherit', background: 'transparent', border: 0, cursor: 'pointer', fontSize: '1.1rem' }}>×</button>
+        </div>
+      )}
 
       {/* 新增/編輯客戶彈窗 */}
       {showModal && (
