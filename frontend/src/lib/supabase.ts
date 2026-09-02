@@ -23,6 +23,7 @@ export type Database = {
       update_appointment: { Args: { p_id: number; p_customer_id: number; p_service_id: number; p_start_time: string; p_status: string; p_custom_items?: unknown[]; p_note?: string }; Returns: Database['public']['Tables']['appointments']['Row'] };
       checkout_appointment: { Args: { p_appointment_id: number; p_idempotency_key: string; p_product_items?: unknown[]; p_custom_items?: unknown[]; p_payment_method?: string; p_discount?: number }; Returns: { order_id: number; total_amount: number }[] };
       archive_appointment: { Args: { p_appointment_id: number }; Returns: number };
+      archive_customer: { Args: { p_customer_id: number }; Returns: number };
       get_reconciliation_staff: { Args: Record<string, never>; Returns: { id:string; full_name:string }[] };
       get_reconciliation_report: { Args: { p_start_date:string; p_end_date:string; p_status?:string|null; p_payment_method?:string|null; p_handled_by?:string|null }; Returns: { order_id:number; appointment_id:number; transaction_at:string; order_status:'paid'|'refunded'; customer_name:string; customer_phone:string; item_details:unknown; original_amount:number; discount_amount:number; final_amount:number; payment_method:'cash'|'credit_card'|'line_pay'|'bank_transfer'; handled_by:string|null; handled_by_name:string; notes:string|null }[] };
       adjust_product_stock: { Args: { p_product_id: number; p_quantity_delta: number; p_reason: string }; Returns: number };

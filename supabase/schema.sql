@@ -302,6 +302,20 @@ begin
   return p_appointment_id;
 end $$;
 
+create or replace function public.archive_customer(p_customer_id bigint)
+returns bigint language plpgsql security invoker set search_path = pg_catalog, public as $$
+declare v_customer_id bigint;
+begin
+  update public.customers
+  set deleted_at=coalesce(deleted_at,now())
+  where id=p_customer_id and deleted_at is null
+  returning id into v_customer_id;
+  if not found then
+    raise exception using errcode='P0002',message='Customer not found or already deleted';
+  end if;
+  return v_customer_id;
+end $$;
+
 do $$ declare v_appointment_id bigint; begin
   for v_appointment_id in select id from public.appointments where deleted_at is not null order by id loop perform public.archive_appointment(v_appointment_id); end loop;
 end $$;
@@ -347,7 +361,7 @@ do $$ declare t text; begin foreach t in array array['customers','services','pro
 
 revoke all on public.customers,public.services,public.products,public.appointments,public.blocked_times,public.orders,public.order_items,public.stock_adjustments,public.finance_records,public.system_settings from anon;
 revoke usage,select on all sequences in schema public from anon;
-revoke execute on function public.create_appointment(bigint,bigint,timestamptz,text,jsonb,text), public.update_appointment(bigint,bigint,bigint,timestamptz,text,jsonb,text), public.adjust_product_stock(bigint,integer,text), public.update_product(bigint,text,bigint,integer,text,boolean), public.checkout_appointment(bigint,text,jsonb,jsonb,text,bigint), public.archive_appointment(bigint), public.get_reconciliation_staff(), public.get_reconciliation_report(date,date,text,text,uuid) from public, anon;
+revoke execute on function public.create_appointment(bigint,bigint,timestamptz,text,jsonb,text), public.update_appointment(bigint,bigint,bigint,timestamptz,text,jsonb,text), public.adjust_product_stock(bigint,integer,text), public.update_product(bigint,text,bigint,integer,text,boolean), public.checkout_appointment(bigint,text,jsonb,jsonb,text,bigint), public.archive_appointment(bigint), public.archive_customer(bigint), public.get_reconciliation_staff(), public.get_reconciliation_report(date,date,text,text,uuid) from public, anon;
 
 do $$ declare t text; begin foreach t in array array['customers','products','appointments','blocked_times','orders','order_items','stock_adjustments','finance_records'] loop execute format('drop policy if exists authenticated_access on public.%I',t); execute format('create policy authenticated_access on public.%I for all to authenticated using (auth.uid() is not null) with check (auth.uid() is not null)',t); end loop; end $$;
 
@@ -368,4 +382,4 @@ grant insert,update,delete on public.services,public.system_settings to authenti
 grant select on public.profiles to authenticated;
 grant update(email,full_name,role,updated_at) on public.profiles to authenticated;
 grant usage,select on all sequences in schema public to authenticated;
-grant execute on function public.create_appointment(bigint,bigint,timestamptz,text,jsonb,text), public.update_appointment(bigint,bigint,bigint,timestamptz,text,jsonb,text), public.adjust_product_stock(bigint,integer,text), public.update_product(bigint,text,bigint,integer,text,boolean), public.checkout_appointment(bigint,text,jsonb,jsonb,text,bigint), public.archive_appointment(bigint), public.get_reconciliation_staff(), public.get_reconciliation_report(date,date,text,text,uuid) to authenticated;
+grant execute on function public.create_appointment(bigint,bigint,timestamptz,text,jsonb,text), public.update_appointment(bigint,bigint,bigint,timestamptz,text,jsonb,text), public.adjust_product_stock(bigint,integer,text), public.update_product(bigint,text,bigint,integer,text,boolean), public.checkout_appointment(bigint,text,jsonb,jsonb,text,bigint), public.archive_appointment(bigint), public.archive_customer(bigint), public.get_reconciliation_staff(), public.get_reconciliation_report(date,date,text,text,uuid) to authenticated;

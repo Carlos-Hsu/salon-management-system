@@ -150,7 +150,11 @@ function createApp(db) {
   app.put('/api/transactions/:id', asyncRoute(async(req,res)=>{await db.run('UPDATE transactions SET amount=?,notes=? WHERE id=?',[integer(req.body.amount,'amount'),req.body.notes||'',req.params.id]);res.json({ok:true});}));
   app.delete('/api/transactions/:id', asyncRoute(async(req,res)=>{await db.run('DELETE FROM transactions WHERE id=?',[req.params.id]);res.status(204).end();}));
 
-  app.use((error, _req, res, _next) => { if (process.env.NODE_ENV !== 'test') console.error(error.message); res.status(error.status || (error.code?.startsWith('SQLITE_CONSTRAINT') ? 400 : 500)).json({ error: error.message }); });
+  app.use((error, req, res, _next) => {
+    const status = error.status || (error.code?.startsWith('SQLITE_CONSTRAINT') ? 400 : 500);
+    if (process.env.NODE_ENV !== 'test' && status >= 500) console.error('API request failed', { method: req.method, path: req.originalUrl, status, message: error.message, stack: error.stack });
+    res.status(status).json({ error: status >= 500 ? 'Internal server error; check server logs for details.' : error.message });
+  });
   return app;
 }
 module.exports = { createApp };
