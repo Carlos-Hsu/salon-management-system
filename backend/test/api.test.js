@@ -41,17 +41,22 @@ test('appointment API derives duration/price and reports overlap as 409', async 
   assert.equal(response.status, 409);
 });
 
-test('customer DELETE soft-deletes customers with appointment history and hides them from the CRM list', async t => {
+test('customer DELETE permanently removes customers and their appointment history', async t => {
   const { db, url } = await apiServer(t);
   const customer = await db.run("INSERT INTO customers(name,phone) VALUES ('History Client','0912000000')");
   const service = await db.run("INSERT INTO services(name,duration_minutes,price) VALUES ('Cut',60,900)");
   const appointment = await db.run(`INSERT INTO appointments(customer_id,service_id,start_time,end_time,status,price)
     VALUES (?,?,?,?,?,?)`, [customer.lastID, service.lastID, '2031-02-03T10:00:00Z', '2031-02-03T11:00:00Z', 'completed', 900]);
+  const order = await db.run('INSERT INTO orders(appointment_id,subtotal,surcharge,total) VALUES (?,?,?,?)', [appointment.lastID, 900, 0, 900]);
+  await db.run(`INSERT INTO transactions(type,item_id,amount,source_type,source_id)
+    VALUES ('income',1,?,'order',?)`, [900, order.lastID]);
 
   const response = await fetch(`${url}/customers/${customer.lastID}`, { method: 'DELETE' });
   assert.equal(response.status, 204);
-  assert.ok((await db.get('SELECT deleted_at FROM customers WHERE id=?', [customer.lastID])).deleted_at);
-  assert.ok(await db.get('SELECT id FROM appointments WHERE id=?', [appointment.lastID]));
+  assert.equal(await db.get('SELECT id FROM customers WHERE id=?', [customer.lastID]), undefined);
+  assert.equal(await db.get('SELECT id FROM appointments WHERE id=?', [appointment.lastID]), undefined);
+  assert.equal(await db.get('SELECT id FROM orders WHERE id=?', [order.lastID]), undefined);
+  assert.equal(await db.get('SELECT id FROM transactions WHERE source_id=?', [order.lastID]), undefined);
 
   const customersResponse = await fetch(`${url}/customers`);
   assert.equal(customersResponse.status, 200);

@@ -59,7 +59,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ customers, onCreat
   };
 
   const handleDelete = async (id: number) => {
-    if (confirm('確定要刪除此客戶嗎？')) {
+    if (confirm('確定要永久刪除此客戶嗎？此操作會一併永久刪除所有歷史預約、消費與財務紀錄，且無法復原。')) {
       try {
         await onDeleteCustomer(id);
       } catch (error) {

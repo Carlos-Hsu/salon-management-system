@@ -79,8 +79,16 @@ function createApp(db) {
   app.post('/api/customers', asyncRoute(async (req, res) => { if (!req.body.name) throw Object.assign(new Error('Name required'), { status: 400 }); const result = await db.run('INSERT INTO customers(name,phone,email,notes) VALUES (?,?,?,?)', [req.body.name, req.body.phone || '', req.body.email || '', req.body.notes || '']); res.status(201).json({ id: result.lastID }); }));
   app.put('/api/customers/:id', asyncRoute(async (req, res) => { const result = await db.run('UPDATE customers SET name=?,phone=?,email=?,notes=? WHERE id=? AND deleted_at IS NULL', [req.body.name, req.body.phone || '', req.body.email || '', req.body.notes || '', req.params.id]); if (!result.changes) return res.status(404).json({ error: 'Customer not found' }); res.json({ ok: true }); }));
   app.delete('/api/customers/:id', asyncRoute(async (req, res) => {
-    const result = await db.run('UPDATE customers SET deleted_at=COALESCE(deleted_at,?) WHERE id=? AND deleted_at IS NULL', [new Date().toISOString(), req.params.id]);
-    if (!result.changes) return res.status(404).json({ error: 'Customer not found' });
+    const customerId = integer(req.params.id, 'customer id', 1);
+    await db.transaction(async () => {
+      const customer = await db.get('SELECT id FROM customers WHERE id=?', [customerId]);
+      if (!customer) throw Object.assign(new Error('Customer not found'), { status: 404 });
+      await db.run(`DELETE FROM transactions WHERE source_type='order' AND source_id IN
+        (SELECT id FROM orders WHERE appointment_id IN (SELECT id FROM appointments WHERE customer_id=?))`, [customerId]);
+      await db.run('DELETE FROM orders WHERE appointment_id IN (SELECT id FROM appointments WHERE customer_id=?)', [customerId]);
+      await db.run('DELETE FROM appointments WHERE customer_id=?', [customerId]);
+      await db.run('DELETE FROM customers WHERE id=?', [customerId]);
+    });
     res.status(204).end();
   }));
 
