@@ -5,7 +5,7 @@ async function migrate(db) {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS customers (
       id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, phone TEXT,
-      email TEXT, notes TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      email TEXT, notes TEXT, deleted_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE IF NOT EXISTS stylists (
       id INTEGER PRIMARY KEY, name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1
@@ -80,6 +80,10 @@ async function migrate(db) {
   ];
   for (const [name, definition] of additions) {
     if (!columns.some((column) => column.name === name)) await db.run(`ALTER TABLE appointments ADD COLUMN ${name} ${definition}`);
+  }
+  const customerColumns = await db.all('PRAGMA table_info(customers)');
+  if (!customerColumns.some((column) => column.name === 'deleted_at')) {
+    await db.run('ALTER TABLE customers ADD COLUMN deleted_at TEXT');
   }
   const productColumns = await db.all('PRAGMA table_info(products)');
   for (const [name, definition] of [['active', 'INTEGER NOT NULL DEFAULT 1'], ['vendor_name', 'TEXT']]) {

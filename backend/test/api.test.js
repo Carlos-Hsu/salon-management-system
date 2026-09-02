@@ -6,7 +6,15 @@ const { createApp } = require('../app');
 async function apiServer(t) {
   const db = openDatabase(':memory:');
   await db.ready;
-  const server = createApp(db).listen(0);
+  const app = createApp(db);
+  const server = await new Promise((resolve, reject) => {
+    const server = app.listen(0);
+    server.once('error', reject);
+    server.once('listening', () => {
+      server.off('error', reject);
+      resolve(server);
+    });
+  });
   t.after(async () => {
     await new Promise(resolve => server.close(resolve));
     await db.close();
@@ -31,6 +39,25 @@ test('appointment API derives duration/price and reports overlap as 409', async 
   assert.equal(new Date(appointment.end_time) - new Date(appointment.start_time), 90 * 60000);
   response = await fetch(`${url}/appointments`, { method: 'POST', ...json({ ...payload, start_time: '2031-02-03T11:00:00Z' }) });
   assert.equal(response.status, 409);
+});
+
+test('customer DELETE soft-deletes customers with appointment history and hides them from the CRM list', async t => {
+  const { db, url } = await apiServer(t);
+  const customer = await db.run("INSERT INTO customers(name,phone) VALUES ('History Client','0912000000')");
+  const service = await db.run("INSERT INTO services(name,duration_minutes,price) VALUES ('Cut',60,900)");
+  const appointment = await db.run(`INSERT INTO appointments(customer_id,service_id,start_time,end_time,status,price)
+    VALUES (?,?,?,?,?,?)`, [customer.lastID, service.lastID, '2031-02-03T10:00:00Z', '2031-02-03T11:00:00Z', 'completed', 900]);
+
+  const response = await fetch(`${url}/customers/${customer.lastID}`, { method: 'DELETE' });
+  assert.equal(response.status, 204);
+  assert.ok((await db.get('SELECT deleted_at FROM customers WHERE id=?', [customer.lastID])).deleted_at);
+  assert.ok(await db.get('SELECT id FROM appointments WHERE id=?', [appointment.lastID]));
+
+  const customersResponse = await fetch(`${url}/customers`);
+  assert.equal(customersResponse.status, 200);
+  assert.deepEqual(await customersResponse.json(), []);
+  const statsResponse = await fetch(`${url}/dashboard/stats`);
+  assert.equal((await statsResponse.json()).totalCustomers, 0);
 });
 
 test('deleting a completed appointment voids income and restores checkout stock exactly once', async t => {

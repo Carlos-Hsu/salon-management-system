@@ -15,7 +15,7 @@ function createApp(db) {
   app.get('/api/dashboard/stats', asyncRoute(async (_req, res) => res.json(await db.get(`SELECT
     (SELECT COUNT(*) FROM appointments WHERE deleted_at IS NULL AND date(start_time)=date('now') AND status<>'cancelled') todayAppointments,
     COALESCE((SELECT SUM(amount) FROM transactions WHERE voided_at IS NULL AND type='income' AND date(date)=date('now')),0) todayRevenue,
-    (SELECT COUNT(*) FROM customers) totalCustomers`))));
+    (SELECT COUNT(*) FROM customers WHERE deleted_at IS NULL) totalCustomers`))));
 
   app.get('/api/appointments', asyncRoute(async (req, res) => {
     const conditions = ['a.deleted_at IS NULL']; const params = [];
@@ -73,12 +73,16 @@ function createApp(db) {
   app.get('/api/customers', asyncRoute(async (_req, res) => res.json(await db.all(`SELECT c.*,
     (SELECT MAX(a.start_time) FROM appointments a WHERE a.customer_id=c.id AND a.status='completed' AND a.deleted_at IS NULL) last_visit,
     COALESCE((SELECT o.total FROM orders o JOIN appointments a ON a.id=o.appointment_id WHERE a.customer_id=c.id AND o.voided_at IS NULL ORDER BY o.created_at DESC LIMIT 1),0) last_spend
-    FROM customers c ORDER BY c.name`))));
+    FROM customers c WHERE c.deleted_at IS NULL ORDER BY c.name`))));
   app.get('/api/customers/:id/history', asyncRoute(async (req, res) => res.json(await db.all(`SELECT a.*,s.name service_name,o.total
     FROM appointments a LEFT JOIN services s ON s.id=a.service_id LEFT JOIN orders o ON o.appointment_id=a.id WHERE a.customer_id=? AND a.deleted_at IS NULL ORDER BY a.start_time DESC`, [req.params.id]))));
   app.post('/api/customers', asyncRoute(async (req, res) => { if (!req.body.name) throw Object.assign(new Error('Name required'), { status: 400 }); const result = await db.run('INSERT INTO customers(name,phone,email,notes) VALUES (?,?,?,?)', [req.body.name, req.body.phone || '', req.body.email || '', req.body.notes || '']); res.status(201).json({ id: result.lastID }); }));
-  app.put('/api/customers/:id', asyncRoute(async (req, res) => { await db.run('UPDATE customers SET name=?,phone=?,email=?,notes=? WHERE id=?', [req.body.name, req.body.phone || '', req.body.email || '', req.body.notes || '', req.params.id]); res.json({ ok: true }); }));
-  app.delete('/api/customers/:id', asyncRoute(async (req, res) => { try { await db.run('DELETE FROM customers WHERE id=?', [req.params.id]); res.status(204).end(); } catch { throw Object.assign(new Error('Customer has appointment history'), { status: 409 }); } }));
+  app.put('/api/customers/:id', asyncRoute(async (req, res) => { const result = await db.run('UPDATE customers SET name=?,phone=?,email=?,notes=? WHERE id=? AND deleted_at IS NULL', [req.body.name, req.body.phone || '', req.body.email || '', req.body.notes || '', req.params.id]); if (!result.changes) return res.status(404).json({ error: 'Customer not found' }); res.json({ ok: true }); }));
+  app.delete('/api/customers/:id', asyncRoute(async (req, res) => {
+    const result = await db.run('UPDATE customers SET deleted_at=COALESCE(deleted_at,?) WHERE id=? AND deleted_at IS NULL', [new Date().toISOString(), req.params.id]);
+    if (!result.changes) return res.status(404).json({ error: 'Customer not found' });
+    res.status(204).end();
+  }));
 
   app.get('/api/products', asyncRoute(async (_req, res) => res.json(await db.all('SELECT * FROM products ORDER BY name'))));
   app.post('/api/products', asyncRoute(async (req, res) => {

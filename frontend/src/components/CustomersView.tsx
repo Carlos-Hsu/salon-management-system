@@ -60,7 +60,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ customers, onCreat
 
   const handleDelete = async (id: number) => {
     if (confirm('確定要刪除此客戶嗎？')) {
-      await onDeleteCustomer(id);
+      try {
+        await onDeleteCustomer(id);
+      } catch (error) {
+        alert(error instanceof Error ? `刪除客戶失敗：${error.message}` : '刪除客戶失敗');
+      }
     }
   };
 
