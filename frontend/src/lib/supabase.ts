@@ -29,6 +29,7 @@ export type Database = {
       get_reconciliation_report: { Args: { p_start_date:string; p_end_date:string; p_status?:string|null; p_payment_method?:string|null; p_handled_by?:string|null }; Returns: { order_id:number; appointment_id:number; transaction_at:string; order_status:'paid'|'refunded'; customer_name:string; customer_phone:string; item_details:unknown; original_amount:number; discount_amount:number; final_amount:number; payment_method:'cash'|'credit_card'|'line_pay'|'bank_transfer'; handled_by:string|null; handled_by_name:string; notes:string|null }[] };
       adjust_product_stock: { Args: { p_product_id: number; p_quantity_delta: number; p_reason: string }; Returns: number };
       update_product: { Args: { p_product_id: number; p_name: string; p_price: number; p_stock: number; p_vendor?: string | null; p_active?: boolean }; Returns: number };
+      delete_product: { Args: { p_product_id: number }; Returns: number };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

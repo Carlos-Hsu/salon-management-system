@@ -142,18 +142,29 @@ test('product stock adjustment is atomic, auditable, and rejects negative result
   assert.equal((await db.get('SELECT COUNT(*) count FROM product_stock_adjustments WHERE product_id=?', [product.lastID])).count, 1);
 });
 
-test('product DELETE hard-deletes only products without order or stock history', async t => {
+test('product DELETE removes inventory-only products but preserves order history', async t => {
   const { db, url } = await apiServer(t);
   const unused = await db.run("INSERT INTO products(name,price,stock_quantity) VALUES ('Unused',100,0)");
   let response = await fetch(`${url}/products/${unused.lastID}`, { method: 'DELETE' });
   assert.equal(response.status, 204);
 
-  const used = await db.run("INSERT INTO products(name,price,stock_quantity) VALUES ('Historic',100,2)");
-  await db.run("INSERT INTO product_stock_adjustments(product_id,quantity_delta,resulting_quantity,reason) VALUES (?,?,?,?)", [used.lastID, 2, 2, 'Initial count']);
-  response = await fetch(`${url}/products/${used.lastID}`, { method: 'DELETE' });
+  const inventoryOnly = await db.run("INSERT INTO products(name,price,stock_quantity) VALUES ('Inventory only',100,2)");
+  await db.run("INSERT INTO product_stock_adjustments(product_id,quantity_delta,resulting_quantity,reason) VALUES (?,?,?,?)", [inventoryOnly.lastID, 2, 2, 'Initial count']);
+  response = await fetch(`${url}/products/${inventoryOnly.lastID}`, { method: 'DELETE' });
+  assert.equal(response.status, 204);
+  assert.equal(await db.get('SELECT id FROM products WHERE id=?', [inventoryOnly.lastID]), undefined);
+  assert.equal((await db.get('SELECT COUNT(*) count FROM product_stock_adjustments WHERE product_id=?', [inventoryOnly.lastID])).count, 0);
+
+  const customer = await db.run("INSERT INTO customers(name) VALUES ('Client')");
+  const service = await db.run("INSERT INTO services(name,duration_minutes,price) VALUES ('Service',30,500)");
+  const appointment = await db.run(`INSERT INTO appointments(customer_id,service_id,start_time,end_time,status,price)
+    VALUES (?,?,?,?,?,?)`, [customer.lastID, service.lastID, '2031-02-03T10:00:00Z', '2031-02-03T10:30:00Z', 'completed', 500]);
+  const ordered = await db.run("INSERT INTO products(name,price,stock_quantity) VALUES ('Historic',100,2)");
+  await db.run("INSERT INTO appointment_products(appointment_id,product_id,quantity,unit_price) VALUES (?,?,?,?)", [appointment.lastID, ordered.lastID, 1, 100]);
+  response = await fetch(`${url}/products/${ordered.lastID}`, { method: 'DELETE' });
   assert.equal(response.status, 409);
   assert.match((await response.json()).error, /停用.*歷史/);
-  assert.ok(await db.get('SELECT id FROM products WHERE id=?', [used.lastID]));
+  assert.ok(await db.get('SELECT id FROM products WHERE id=?', [ordered.lastID]));
 });
 
 test('service DELETE hard-deletes only unreferenced services', async t => {

@@ -139,12 +139,14 @@ function createApp(db) {
       FROM product_stock_adjustments WHERE product_id=? ORDER BY id DESC`, [req.params.id]));
   }));
   app.delete('/api/products/:id', asyncRoute(async (req, res) => {
-    const product = await db.get('SELECT id FROM products WHERE id=?', [req.params.id]);
-    if (!product) return res.status(404).json({ error: 'Product not found' });
-    const referenced = await db.get(`SELECT 1 referenced FROM appointment_products WHERE product_id=?
-      UNION ALL SELECT 1 FROM product_stock_adjustments WHERE product_id=? LIMIT 1`, [req.params.id, req.params.id]);
-    if (referenced) return res.status(409).json({ error: '此產品已有訂單或庫存紀錄，請改為停用以保留歷史資料。' });
-    await db.run('DELETE FROM products WHERE id=?', [req.params.id]);
+    await db.transaction(async () => {
+      const product = await db.get('SELECT id FROM products WHERE id=?', [req.params.id]);
+      if (!product) throw Object.assign(new Error('Product not found'), { status: 404 });
+      const ordered = await db.get('SELECT 1 referenced FROM appointment_products WHERE product_id=? LIMIT 1', [req.params.id]);
+      if (ordered) throw Object.assign(new Error('此產品已有訂單紀錄，請改為停用以保留歷史資料。'), { status: 409 });
+      await db.run('DELETE FROM product_stock_adjustments WHERE product_id=?', [req.params.id]);
+      await db.run('DELETE FROM products WHERE id=?', [req.params.id]);
+    });
     res.status(204).end();
   }));
 

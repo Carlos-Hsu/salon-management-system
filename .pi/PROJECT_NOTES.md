@@ -34,6 +34,7 @@
 - [x] Integrated `profiles` and `system_settings` into the canonical schema.
 - [x] Replaced hard-coded admin email with first-user super-admin bootstrap.
 - [x] Added lazy-loaded feature views to reduce the main JavaScript chunk.
+- [x] Added a repeatable product-mutation migration: restores the missing `update_product` RPC and permits deletion of unsold products together with their inventory audit rows, while preserving products referenced by historical orders.
 
 ## Validation Status
 - `npm run lint --prefix frontend`: passed.
@@ -43,6 +44,7 @@
 - `npm audit --prefix frontend --omit=dev`: previously reported 0 production vulnerabilities.
 - Pi project-extension discovery completed without loader errors.
 - Remote Supabase deployment status is not verified; `20260827_authenticated_core_rls.sql` has not been applied remotely.
+- Product mutation fix in `20260921_fix_product_update_delete.sql` was applied successfully to Supabase project `tgnusjcsqwuvojykgrgj` (`salon-system`) on 2026-09-21.
 
 ## Follow-up
 - Verify the target Supabase project identity, then apply migrations in order and run `supabase/tests/authenticated_rls_checks.sql`.

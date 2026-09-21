@@ -242,6 +242,18 @@ begin
   if v_delta<>0 then insert into public.stock_adjustments(product_id,quantity_delta,resulting_stock,reason) values(p_product_id,v_delta,p_stock,'Inline stock edit'); end if;
   return p_stock;
 end $$;
+create or replace function public.delete_product(p_product_id bigint)
+returns bigint language plpgsql security invoker set search_path = pg_catalog, public as $$
+begin
+  perform 1 from public.products where id=p_product_id for update;
+  if not found then raise exception using errcode='P0002',message='Product not found'; end if;
+  if exists(select 1 from public.order_items where product_id=p_product_id) then
+    raise exception using errcode='23503',message='此產品已有訂單紀錄，請改為停用以保留歷史資料。';
+  end if;
+  delete from public.stock_adjustments where product_id=p_product_id;
+  delete from public.products where id=p_product_id;
+  return p_product_id;
+end $$;
 create or replace function public.checkout_appointment(p_appointment_id bigint,p_idempotency_key text,p_product_items jsonb default '[]',p_custom_items jsonb default '[]',p_payment_method text default 'cash',p_discount bigint default 0)
 returns table(order_id bigint,total_amount bigint) language plpgsql security invoker set search_path = pg_catalog, public as $$
 declare v_app public.appointments; v_order public.orders; v_service_name text; v_service_amount bigint; v_product_amount bigint:=0; v_custom_amount bigint:=0; v_item jsonb; v_product public.products; v_qty integer; v_total bigint;
@@ -384,7 +396,7 @@ do $$ declare t text; begin foreach t in array array['customers','services','pro
 
 revoke all on public.customers,public.services,public.products,public.appointments,public.blocked_times,public.orders,public.order_items,public.stock_adjustments,public.finance_records,public.system_settings from anon;
 revoke usage,select on all sequences in schema public from anon;
-revoke execute on function public.create_appointment(bigint,bigint,timestamptz,text,jsonb,text), public.update_appointment(bigint,bigint,bigint,timestamptz,text,jsonb,text), public.adjust_product_stock(bigint,integer,text), public.update_product(bigint,text,bigint,integer,text,boolean), public.checkout_appointment(bigint,text,jsonb,jsonb,text,bigint), public.archive_appointment(bigint), public.archive_customer(bigint), public.permanently_delete_customer(bigint), public.get_reconciliation_staff(), public.get_reconciliation_report(date,date,text,text,uuid) from public, anon;
+revoke execute on function public.create_appointment(bigint,bigint,timestamptz,text,jsonb,text), public.update_appointment(bigint,bigint,bigint,timestamptz,text,jsonb,text), public.adjust_product_stock(bigint,integer,text), public.update_product(bigint,text,bigint,integer,text,boolean), public.delete_product(bigint), public.checkout_appointment(bigint,text,jsonb,jsonb,text,bigint), public.archive_appointment(bigint), public.archive_customer(bigint), public.permanently_delete_customer(bigint), public.get_reconciliation_staff(), public.get_reconciliation_report(date,date,text,text,uuid) from public, anon;
 
 do $$ declare t text; begin foreach t in array array['customers','products','appointments','blocked_times','orders','order_items','stock_adjustments','finance_records'] loop execute format('drop policy if exists authenticated_access on public.%I',t); execute format('create policy authenticated_access on public.%I for all to authenticated using (auth.uid() is not null) with check (auth.uid() is not null)',t); end loop; end $$;
 
@@ -405,4 +417,4 @@ grant insert,update,delete on public.services,public.system_settings to authenti
 grant select on public.profiles to authenticated;
 grant update(email,full_name,role,updated_at) on public.profiles to authenticated;
 grant usage,select on all sequences in schema public to authenticated;
-grant execute on function public.create_appointment(bigint,bigint,timestamptz,text,jsonb,text), public.update_appointment(bigint,bigint,bigint,timestamptz,text,jsonb,text), public.adjust_product_stock(bigint,integer,text), public.update_product(bigint,text,bigint,integer,text,boolean), public.checkout_appointment(bigint,text,jsonb,jsonb,text,bigint), public.archive_appointment(bigint), public.archive_customer(bigint), public.permanently_delete_customer(bigint), public.get_reconciliation_staff(), public.get_reconciliation_report(date,date,text,text,uuid) to authenticated;
+grant execute on function public.create_appointment(bigint,bigint,timestamptz,text,jsonb,text), public.update_appointment(bigint,bigint,bigint,timestamptz,text,jsonb,text), public.adjust_product_stock(bigint,integer,text), public.update_product(bigint,text,bigint,integer,text,boolean), public.delete_product(bigint), public.checkout_appointment(bigint,text,jsonb,jsonb,text,bigint), public.archive_appointment(bigint), public.archive_customer(bigint), public.permanently_delete_customer(bigint), public.get_reconciliation_staff(), public.get_reconciliation_report(date,date,text,text,uuid) to authenticated;
