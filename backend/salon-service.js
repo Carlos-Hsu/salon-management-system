@@ -6,6 +6,15 @@ async function getService(db, id) {
   if (!service) fail('Service not found', 404);
   return service;
 }
+async function resolveService(db, body, fallback = {}) {
+  const serviceId = body.service_id === undefined ? fallback.service_id : body.service_id;
+  if (serviceId != null) return getService(db, serviceId);
+  const name = String(body.custom_service_name ?? fallback.custom_service_name ?? '').trim();
+  const duration_minutes = Number(body.custom_service_duration ?? fallback.custom_service_duration);
+  const price = Number(body.custom_service_price ?? fallback.custom_service_price);
+  if (!name || !Number.isInteger(duration_minutes) || duration_minutes < 1 || !Number.isInteger(price) || price < 0) fail('Invalid custom service');
+  return { id: null, name, duration_minutes, price, custom: true };
+}
 async function productsTotal(db, products = []) {
   let total = 0; const lines = [];
   for (const requested of products) {
@@ -25,13 +34,14 @@ async function effectiveSurcharge(db, body) {
   return [settings.holiday_surcharge_type || 'none', Number(settings.holiday_surcharge_value || 0)];
 }
 async function appointmentView(db, id) {
-  return db.get(`SELECT a.*, c.name customerName, s.name service_name, s.duration_minutes,
+  return db.get(`SELECT a.*, c.name customerName, COALESCE(a.custom_service_name,s.name) service_name,
+    COALESCE(a.custom_service_duration,s.duration_minutes) duration_minutes,
     COALESCE((SELECT SUM(quantity*unit_price) FROM appointment_products ap WHERE ap.appointment_id=a.id),0) product_total
     FROM appointments a JOIN customers c ON c.id=a.customer_id LEFT JOIN services s ON s.id=a.service_id WHERE a.id=?`, [id]);
 }
 
 async function createAppointment(db, body) {
-  const service = await getService(db, body.service_id);
+  const service = await resolveService(db, body);
   if (!await db.get('SELECT id FROM customers WHERE id=?', [body.customer_id])) fail('Customer not found', 404);
   const startDate = new Date(body.start_time);
   if (Number.isNaN(startDate.valueOf())) fail('Invalid start_time');
@@ -44,9 +54,9 @@ async function createAppointment(db, body) {
   const [surchargeType, surchargeValue] = await effectiveSurcharge(db, body);
   surchargeAmount(service.price + productData.total, surchargeType, surchargeValue);
   const result = await db.run(`INSERT INTO appointments
-    (customer_id,stylist_id,service_id,service,start_time,end_time,status,price,surcharge_type,surcharge_value,notes)
-    VALUES (?,?,?,?,?,?,'pending',?,?,?,?)`,
-    [body.customer_id, stylistId, service.id, service.name, start, end, service.price, surchargeType, surchargeValue, body.notes || null]);
+    (customer_id,stylist_id,service_id,service,custom_service_name,custom_service_duration,custom_service_price,start_time,end_time,status,price,surcharge_type,surcharge_value,notes)
+    VALUES (?,?,?,?,?,?,?,?,?,'pending',?,?,?,?)`,
+    [body.customer_id, stylistId, service.id, service.name, service.custom ? service.name : null, service.custom ? service.duration_minutes : null, service.custom ? service.price : null, start, end, service.price, surchargeType, surchargeValue, body.notes || null]);
   for (const line of productData.lines) await db.run('INSERT INTO appointment_products VALUES (?,?,?,?)', [result.lastID, line.product_id, line.quantity, line.unit_price]);
   return appointmentView(db, result.lastID);
 }
@@ -56,7 +66,7 @@ async function updateAppointment(db, id, body) {
   if (!old) fail('Appointment not found', 404);
   const nextStatus = body.status || old.status;
   assertTransition(old.status, nextStatus);
-  const service = await getService(db, body.service_id || old.service_id);
+  const service = await resolveService(db, body, old);
   const startDate = new Date(body.start_time || old.start_time);
   if (Number.isNaN(startDate.valueOf())) fail('Invalid start_time');
   const [start, end] = normalizeInterval(startDate, new Date(startDate.valueOf() + service.duration_minutes * 60000));
@@ -70,8 +80,8 @@ async function updateAppointment(db, id, body) {
   await db.transaction(async () => {
     const current = await db.get('SELECT status FROM appointments WHERE id=?', [id]);
     if (!current || current.status !== old.status) fail('Appointment changed concurrently', 409);
-    await db.run(`UPDATE appointments SET service_id=?,service=?,start_time=?,end_time=?,status=?,price=?,
-      surcharge_type=?,surcharge_value=?,notes=? WHERE id=?`, [service.id, service.name, start, end, nextStatus,
+    await db.run(`UPDATE appointments SET service_id=?,service=?,custom_service_name=?,custom_service_duration=?,custom_service_price=?,start_time=?,end_time=?,status=?,price=?,
+      surcharge_type=?,surcharge_value=?,notes=? WHERE id=?`, [service.id, service.name, service.custom ? service.name : null, service.custom ? service.duration_minutes : null, service.custom ? service.price : null, start, end, nextStatus,
       service.price, surchargeType, surchargeValue, body.notes ?? old.notes, id]);
     if (nextStatus === 'completed' && old.status !== 'completed') {
       const product = await db.get('SELECT COALESCE(SUM(quantity*unit_price),0) total FROM appointment_products WHERE appointment_id=?', [id]);

@@ -186,3 +186,22 @@ test('service DELETE hard-deletes unreferenced services and archives referenced 
   assert.deepEqual(await (await fetch(`${url}/services`)).json(), []);
   assert.equal((await db.get('SELECT service_id FROM appointments WHERE service_id=?', [used.lastID])).service_id, used.lastID);
 });
+
+test('custom appointment service keeps its own name, duration, and checkout price', async t => {
+  const { db, url } = await apiServer(t);
+  const customer = await db.run("INSERT INTO customers(name) VALUES ('Custom Client')");
+  let response = await fetch(`${url}/appointments`, { method: 'POST', ...json({ customer_id:customer.lastID, service_id:null, custom_service_name:'局部燙髮', custom_service_duration:35, custom_service_price:680, start_time:'2031-02-03T10:00:00Z' }) });
+  assert.equal(response.status, 201);
+  let appointment = await response.json();
+  assert.equal(appointment.service_name, '局部燙髮');
+  assert.equal(appointment.duration_minutes, 35);
+  assert.equal(appointment.price, 680);
+  assert.equal(appointment.end_time, '2031-02-03T10:35:00.000Z');
+
+  for (const status of ['confirmed', 'in_service', 'completed']) {
+    response = await fetch(`${url}/appointments/${appointment.id}`, { method: 'PUT', ...json({ ...appointment, status }) });
+    assert.equal(response.status, 200);
+    appointment = await response.json();
+  }
+  assert.equal((await db.get('SELECT total FROM orders WHERE appointment_id=?', [appointment.id])).total, 680);
+});
