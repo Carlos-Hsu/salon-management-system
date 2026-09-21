@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { KeyRound, LoaderCircle, LockKeyhole, LogIn, ShieldCheck } from 'lucide-react';
+import { CircleDot, KeyRound, LoaderCircle, LockKeyhole, LogIn, ShieldCheck } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { setApiReadOnlyMode } from '../api';
@@ -29,6 +29,43 @@ export type GlobalAccess = {
   role?: 'staff' | 'super_admin';
   readOnly: boolean;
 };
+
+type OnlinePresence = { user_id: string; email: string; full_name?: string; role?: string; online_at: string; device_id: string };
+type OnlineUser = { userId: string; email: string; fullName?: string; role?: string; onlineAt: string; deviceCount: number };
+
+function OnlineUsers({ access }: { access: GlobalAccess }) {
+  const [users, setUsers] = useState<OnlineUser[]>([]);
+  const [connected, setConnected] = useState(false);
+
+  useEffect(() => {
+    if (!supabase || access.method !== 'authenticated' || !access.user) return;
+    const client = supabase;
+    const deviceId = crypto.randomUUID();
+    const channel = client.channel('salon-online-users', { config: { private: true, presence: { key: deviceId } } });
+    const syncUsers = () => {
+      if (access.role !== 'super_admin') return;
+      const presences = Object.values(channel.presenceState()).flat() as unknown as OnlinePresence[];
+      const grouped = new Map<string, OnlineUser>();
+      for (const presence of presences) {
+        if (!presence.user_id || !presence.email) continue;
+        const current = grouped.get(presence.user_id);
+        if (current) current.deviceCount += 1;
+        else grouped.set(presence.user_id, { userId:presence.user_id, email:presence.email, fullName:presence.full_name, role:presence.role, onlineAt:presence.online_at, deviceCount:1 });
+      }
+      setUsers([...grouped.values()].sort((a,b) => a.email.localeCompare(b.email)));
+    };
+    channel.on('presence', { event: 'sync' }, syncUsers).subscribe(async status => {
+      if (status === 'SUBSCRIBED') {
+        setConnected(true);
+        await channel.track({ user_id:access.user!.id, email:access.email ?? access.user!.email ?? '未知帳號', full_name:access.fullName, role:access.role ?? 'staff', online_at:new Date().toISOString(), device_id:deviceId });
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') setConnected(false);
+    });
+    return () => { void channel.untrack(); void client.removeChannel(channel); };
+  }, [access]);
+
+  if (access.role !== 'super_admin') return null;
+  return <details className="online-users-panel"><summary><CircleDot size={15} aria-hidden="true"/><strong role="status" aria-atomic="true">{connected ? `目前線上 ${users.length} 人` : '在線狀態連線中…'}</strong></summary><div>{users.length ? users.map(user => <p key={user.userId}><span className="online-indicator" aria-hidden="true"/><b>{user.fullName || user.email}</b>{user.fullName && <small>{user.email}</small>}<em>{user.role === 'super_admin' ? '最高管理員' : '經營者'}{user.deviceCount > 1 ? ` · ${user.deviceCount} 個裝置` : ''}</em></p>) : <p><small>尚未收到在線狀態。</small></p>}</div></details>;
+}
 
 async function getAuthenticatedAccess(user: User): Promise<GlobalAccess> {
   const fallback: GlobalAccess = { method: 'authenticated', user, email: user.email, readOnly: false };
@@ -211,6 +248,7 @@ export function GlobalAuthGate({ children }: GlobalAuthGateProps) {
         <strong>{access.readOnly ? '緊急 PIN 唯讀模式' : identity}</strong>
         {!access.readOnly && identityEmail && <small>({identityEmail})</small>}
       </span>
+      {!access.readOnly && <OnlineUsers access={access}/>}
       {access.readOnly && <p>僅供 localhost 緊急查看；所有 API 寫入已由前端阻擋，且未取得 Supabase Auth 權限。</p>}
       <button type="button" onClick={() => void lock()}>{access.readOnly ? '返回登入' : '安全登出'}</button>
     </div>

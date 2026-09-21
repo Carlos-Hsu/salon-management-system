@@ -429,3 +429,10 @@ grant select on public.profiles to authenticated;
 grant update(email,full_name,role,updated_at) on public.profiles to authenticated;
 grant usage,select on all sequences in schema public to authenticated;
 grant execute on function public.create_appointment(bigint,bigint,timestamptz,text,jsonb,text,text,integer,bigint), public.update_appointment(bigint,bigint,bigint,timestamptz,text,jsonb,text,text,integer,bigint), public.adjust_product_stock(bigint,integer,text), public.update_product(bigint,text,bigint,integer,text,boolean), public.delete_product(bigint), public.checkout_appointment(bigint,text,jsonb,jsonb,text,bigint), public.archive_appointment(bigint), public.archive_customer(bigint), public.permanently_delete_customer(bigint), public.get_reconciliation_staff(), public.get_reconciliation_report(date,date,text,text,uuid) to authenticated;
+
+drop policy if exists "salon authenticated users track presence" on realtime.messages;
+create policy "salon authenticated users track presence" on realtime.messages for insert to authenticated
+with check (realtime.topic() = 'salon-online-users' and realtime.messages.extension = 'presence' and auth.uid() is not null);
+drop policy if exists "salon super admins read presence" on realtime.messages;
+create policy "salon super admins read presence" on realtime.messages for select to authenticated
+using (realtime.topic() = 'salon-online-users' and realtime.messages.extension = 'presence' and public.is_super_admin());

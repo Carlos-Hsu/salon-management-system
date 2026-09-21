@@ -42,6 +42,7 @@
 - [x] Added an explicit root Vercel configuration so production deployments build the Vite app in `frontend/` and serve its generated `dist` directory instead of returning a root-level 404.
 - [x] Reworked service deletion as history-safe archival: referenced services disappear from management and booking lists while appointment history retains its service relation; unreferenced fallback services are still physically deleted.
 - [x] Added appointment-only custom services with an independent name, duration, and price across both booking interfaces, scheduling collision calculation, editing, checkout, history, and reconciliation line items.
+- [x] Added a private Supabase Realtime Presence channel: every authenticated account publishes its online state, while only super admins can receive and view the merged online-user/device list.
 
 ## Validation Status
 - `npm run lint --prefix frontend`: passed.
