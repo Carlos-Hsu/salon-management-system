@@ -33,7 +33,7 @@ async function collision(db, stylistId, start, end, excludeId) {
   const params = [stylistId, end, start];
   let excluded = '';
   if (excludeId) { excluded = ' AND id <> ?'; params.push(excludeId); }
-  const appointment = await db.get(`SELECT id FROM appointments WHERE stylist_id=? AND status <> 'cancelled' AND deleted_at IS NULL
+  const appointment = await db.get(`SELECT id FROM appointments WHERE stylist_id=? AND status NOT IN ('completed','cancelled') AND deleted_at IS NULL
     AND datetime(start_time) < datetime(?) AND datetime(end_time) > datetime(?)${excluded} LIMIT 1`, params);
   const block = await db.get(`SELECT id FROM block_times WHERE stylist_id=?
     AND datetime(start_time) < datetime(?) AND datetime(end_time) > datetime(?) LIMIT 1`, [stylistId, end, start]);

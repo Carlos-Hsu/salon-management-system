@@ -61,7 +61,7 @@ function createApp(db) {
   }));
   app.put('/api/block-times/:id', asyncRoute(async (req, res) => {
     const [start, end] = normalizeInterval(req.body.start_time, req.body.end_time);
-    const appointment = await db.get(`SELECT id FROM appointments WHERE stylist_id=1 AND status<>'cancelled' AND deleted_at IS NULL
+    const appointment = await db.get(`SELECT id FROM appointments WHERE stylist_id=1 AND status NOT IN ('completed','cancelled') AND deleted_at IS NULL
       AND datetime(start_time)<datetime(?) AND datetime(end_time)>datetime(?) LIMIT 1`, [end, start]);
     const other = await db.get(`SELECT id FROM block_times WHERE id<>? AND stylist_id=1 AND datetime(start_time)<datetime(?) AND datetime(end_time)>datetime(?)`, [req.params.id, end, start]);
     if (appointment || other) throw Object.assign(new Error('Block time conflicts with existing schedule'), { status: 409 });

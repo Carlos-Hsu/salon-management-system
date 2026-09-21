@@ -37,6 +37,7 @@
 - [x] Added a repeatable product-mutation migration: restores the missing `update_product` RPC and permits deletion of unsold products together with their inventory audit rows, while preserving products referenced by historical orders.
 - [x] Fixed both new-appointment forms so their displayed default and submitted service ID always come from the currently active service list; inactive historical services remain available only when editing an existing appointment.
 - [x] Added visible, localized conflict feedback and saving states to both appointment forms so overlapping appointments no longer fail silently.
+- [x] Released calendar capacity immediately after checkout: completed appointments remain auditable but no longer block the next booking; pending, confirmed, and in-service appointments still enforce overlap protection.
 
 ## Validation Status
 - `npm run lint --prefix frontend`: passed.

@@ -60,7 +60,7 @@ async function updateAppointment(db, id, body) {
   const startDate = new Date(body.start_time || old.start_time);
   if (Number.isNaN(startDate.valueOf())) fail('Invalid start_time');
   const [start, end] = normalizeInterval(startDate, new Date(startDate.valueOf() + service.duration_minutes * 60000));
-  if (nextStatus !== 'cancelled') {
+  if (!['completed', 'cancelled'].includes(nextStatus)) {
     const conflict = await collision(db, old.stylist_id, start, end, id);
     if (conflict) fail(`Time conflicts with ${conflict.type} ${conflict.id}`, 409);
   }

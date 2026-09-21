@@ -23,6 +23,16 @@ test('collision rejects overlap but permits adjacency, cancelled slots, and self
   const replacement=await createAppointment(f.db,base(f,'2030-01-01T09:30:00.000Z')); assert.ok(replacement.id);
 });
 
+test('completed appointments keep history without reserving calendar capacity', async t => {
+  const f=await fixture(t); const first=await createAppointment(f.db,base(f));
+  await updateAppointment(f.db,first.id,{status:'confirmed'});
+  await updateAppointment(f.db,first.id,{status:'in_service'});
+  await updateAppointment(f.db,first.id,{status:'completed'});
+  const next=await createAppointment(f.db,base(f,'2030-01-01T10:00:00.000Z'));
+  assert.ok(next.id);
+  assert.equal((await f.db.get('SELECT status FROM appointments WHERE id=?',[first.id])).status,'completed');
+});
+
 test('invalid intervals and blocks are rejected', async t => {
   assert.throws(()=>normalizeInterval('bad','2030-01-01'),/before/);
   assert.throws(()=>normalizeInterval('2030-01-01','2030-01-01'),/before/);

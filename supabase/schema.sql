@@ -108,7 +108,7 @@ create index if not exists finance_records_type_occurred_idx on public.finance_r
 create index if not exists orders_active_idx on public.orders(appointment_id) where voided_at is null;
 create index if not exists finance_records_active_occurred_idx on public.finance_records(occurred_at desc) where voided_at is null;
 alter table public.appointments drop constraint if exists appointments_no_active_overlap;
-alter table public.appointments add constraint appointments_no_active_overlap exclude using gist (tstzrange(start_time,end_time,'[)') with &&) where (status <> 'cancelled' and deleted_at is null);
+alter table public.appointments add constraint appointments_no_active_overlap exclude using gist (tstzrange(start_time,end_time,'[)') with &&) where (status not in ('completed','cancelled') and deleted_at is null);
 do $$ begin alter table public.blocked_times add constraint blocked_times_no_overlap exclude using gist (tstzrange(start_time,end_time,'[)') with &&); exception when duplicate_object then null; end $$;
 
 create or replace function public.set_updated_at() returns trigger language plpgsql set search_path = pg_catalog, public as $$ begin new.updated_at = now(); return new; end $$;
@@ -153,12 +153,12 @@ create or replace function public.validate_calendar_slot() returns trigger langu
 begin
   perform pg_advisory_xact_lock(8127331);
   if tg_table_name = 'appointments' then
-    if new.status <> 'cancelled' and exists (
+    if new.status not in ('completed','cancelled') and exists (
       select 1 from public.blocked_times b where new.start_time < b.end_time and new.end_time > b.start_time
     ) then raise exception using errcode='23P01', message='Appointment overlaps blocked time'; end if;
   elsif tg_table_name = 'blocked_times' then
     if exists (
-      select 1 from public.appointments a where a.status <> 'cancelled' and a.deleted_at is null and new.start_time < a.end_time and new.end_time > a.start_time
+      select 1 from public.appointments a where a.status not in ('completed','cancelled') and a.deleted_at is null and new.start_time < a.end_time and new.end_time > a.start_time
     ) then raise exception using errcode='23P01', message='Blocked time overlaps appointment'; end if;
   end if;
   return new;
