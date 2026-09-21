@@ -16,6 +16,15 @@ export interface BlockTime { id?: number; start_time: string; end_time: string; 
 export interface DashboardStats { todayAppointments: number; todayRevenue: number; totalCustomers: number }
 export type PaymentMethod = 'cash'|'credit_card'|'line_pay'|'bank_transfer';
 export type OrderStatus = 'paid'|'refunded';
+
+export function appointmentMutationErrorMessage(error: unknown): string {
+  const detail = error instanceof Error ? error.message : String(error ?? '');
+  if (/23P01|overlap|conflict|exclusion constraint|appointments_no_active_overlap|blocked time/i.test(detail)) {
+    return '此時段已有其他預約或已被封鎖，請選擇其他時間。';
+  }
+  return detail || '預約儲存失敗，請稍後再試。';
+}
+
 export interface SystemSettings { storeName: string; openingTime: string; closingTime: string; defaultPayment: PaymentMethod; surchargeType: 'none'|'percent'|'fixed'; surchargeValue: number; reminderEnabled: boolean; reminderHours: number; autoBackup: boolean }
 export interface Transaction { id?: number; type: 'income'|'expense'; item_id: number; itemName?: string; amount: number; date?: string; notes?: string; customerName?: string; serviceName?: string; source?: 'manual'|'appointment'|'order'; order_id?: number|null; appointment_id?: number|null; editable?: boolean; payment_method?: PaymentMethod; details?: { item_type:string; name:string; quantity:number; line_amount:number }[] }
 export interface TransactionItem { id: number; name: string }
