@@ -14,7 +14,7 @@ async function migrate(db) {
     CREATE TABLE IF NOT EXISTS services (
       id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE,
       duration_minutes INTEGER NOT NULL CHECK(duration_minutes > 0),
-      price INTEGER NOT NULL CHECK(price >= 0), active INTEGER NOT NULL DEFAULT 1
+      price INTEGER NOT NULL CHECK(price >= 0), active INTEGER NOT NULL DEFAULT 1, deleted_at TEXT
     );
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
@@ -89,6 +89,8 @@ async function migrate(db) {
   for (const [name, definition] of [['active', 'INTEGER NOT NULL DEFAULT 1'], ['vendor_name', 'TEXT']]) {
     if (!productColumns.some((column) => column.name === name)) await db.run(`ALTER TABLE products ADD COLUMN ${name} ${definition}`);
   }
+  const serviceColumns = await db.all('PRAGMA table_info(services)');
+  if (!serviceColumns.some((column) => column.name === 'deleted_at')) await db.run('ALTER TABLE services ADD COLUMN deleted_at TEXT');
   // Keep this outside the initial schema block as well so upgrades are idempotent.
   await db.exec(`CREATE TABLE IF NOT EXISTS product_stock_adjustments (
     id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER NOT NULL,

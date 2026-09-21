@@ -33,7 +33,7 @@ function createApp(db) {
     res.status(204).end();
   }));
 
-  app.get('/api/services', asyncRoute(async (_req, res) => res.json(await db.all('SELECT * FROM services ORDER BY name'))));
+  app.get('/api/services', asyncRoute(async (_req, res) => res.json(await db.all('SELECT * FROM services WHERE deleted_at IS NULL ORDER BY name'))));
   app.post('/api/services', asyncRoute(async (req, res) => {
     const result = await db.run('INSERT INTO services(name,duration_minutes,price) VALUES (?,?,?)', [req.body.name, integer(req.body.duration_minutes, 'duration_minutes', 1), integer(req.body.price, 'price')]);
     res.status(201).json({ id: result.lastID });
@@ -46,9 +46,9 @@ function createApp(db) {
   app.delete('/api/services/:id', asyncRoute(async (req, res) => {
     const service = await db.get('SELECT id FROM services WHERE id=?', [req.params.id]);
     if (!service) return res.status(404).json({ error: 'Service not found' });
-    const result = await db.run(`DELETE FROM services WHERE id=?
-      AND NOT EXISTS (SELECT 1 FROM appointments WHERE service_id=?)`, [req.params.id, req.params.id]);
-    if (!result.changes) return res.status(409).json({ error: '此服務已有預約紀錄，請改為停用以保留歷史資料。' });
+    const referenced = await db.get('SELECT 1 referenced FROM appointments WHERE service_id=? LIMIT 1', [req.params.id]);
+    if (referenced) await db.run("UPDATE services SET active=0,deleted_at=CURRENT_TIMESTAMP WHERE id=?", [req.params.id]);
+    else await db.run('DELETE FROM services WHERE id=?', [req.params.id]);
     res.status(204).end();
   }));
 

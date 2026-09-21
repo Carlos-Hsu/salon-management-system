@@ -167,7 +167,7 @@ test('product DELETE removes inventory-only products but preserves order history
   assert.ok(await db.get('SELECT id FROM products WHERE id=?', [ordered.lastID]));
 });
 
-test('service DELETE hard-deletes only unreferenced services', async t => {
+test('service DELETE hard-deletes unreferenced services and archives referenced services', async t => {
   const { db, url } = await apiServer(t);
   const unused = await db.run("INSERT INTO services(name,duration_minutes,price) VALUES ('Unused',30,500)");
   let response = await fetch(`${url}/services/${unused.lastID}`, { method: 'DELETE' });
@@ -179,7 +179,10 @@ test('service DELETE hard-deletes only unreferenced services', async t => {
   await db.run(`INSERT INTO appointments(customer_id,service_id,start_time,end_time,status,price)
     VALUES (?,?,?,?,?,?)`, [customer.lastID, used.lastID, '2031-02-03T10:00:00Z', '2031-02-03T10:45:00Z', 'completed', 800]);
   response = await fetch(`${url}/services/${used.lastID}`, { method: 'DELETE' });
-  assert.equal(response.status, 409);
-  assert.match((await response.json()).error, /停用.*歷史/);
-  assert.ok(await db.get('SELECT id FROM services WHERE id=?', [used.lastID]));
+  assert.equal(response.status, 204);
+  const archived = await db.get('SELECT active,deleted_at FROM services WHERE id=?', [used.lastID]);
+  assert.equal(archived.active, 0);
+  assert.ok(archived.deleted_at);
+  assert.deepEqual(await (await fetch(`${url}/services`)).json(), []);
+  assert.equal((await db.get('SELECT service_id FROM appointments WHERE service_id=?', [used.lastID])).service_id, used.lastID);
 });

@@ -191,14 +191,13 @@ function SettingsContent({ services, onRefresh, access }: { services: Service[];
   };
 
   const deleteService = async (service: ServiceDraft) => {
-    if (!window.confirm(`確定永久刪除「${service.name}」？已有預約紀錄的服務無法刪除。`)) return;
+    if (!window.confirm(`確定刪除「${service.name}」？服務會從清單移除，既有預約紀錄仍會保留。`)) return;
     setMessage('');
     try {
       await api.deleteService(service.id);
       await onRefresh();
     } catch (error) {
-      const detail = error instanceof Error ? error.message : '刪除服務失敗。';
-      setMessage(`${detail}${detail.includes('停用') ? '' : ' 若需保留歷史紀錄，請改為停用。'}`);
+      setMessage(error instanceof Error ? error.message : '刪除服務失敗。');
     }
   };
 
