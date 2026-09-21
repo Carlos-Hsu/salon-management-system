@@ -35,6 +35,7 @@
 - [x] Replaced hard-coded admin email with first-user super-admin bootstrap.
 - [x] Added lazy-loaded feature views to reduce the main JavaScript chunk.
 - [x] Added a repeatable product-mutation migration: restores the missing `update_product` RPC and permits deletion of unsold products together with their inventory audit rows, while preserving products referenced by historical orders.
+- [x] Fixed both new-appointment forms so their displayed default and submitted service ID always come from the currently active service list; inactive historical services remain available only when editing an existing appointment.
 
 ## Validation Status
 - `npm run lint --prefix frontend`: passed.
