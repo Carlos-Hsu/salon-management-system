@@ -64,7 +64,7 @@ function SettingsContent({ services, onRefresh, access }: { services: Service[];
   const [surchargeValue, setSurchargeValue] = useState(0);
   const [previewAmount, setPreviewAmount] = useState(1000);
   const [name, setName] = useState('');
-  const [duration, setDuration] = useState(60);
+  const [duration, setDuration] = useState(0);
   const [price, setPrice] = useState(0);
   const [drafts, setDrafts] = useState<Record<number, ServiceDraft>>({});
   const [saving, setSaving] = useState<Set<number>>(new Set());
@@ -291,7 +291,7 @@ function SettingsContent({ services, onRefresh, access }: { services: Service[];
             })}</tbody>
           </table>
         </div>
-        <form className="service-create-form" onSubmit={async event => { event.preventDefault(); setMessage(''); try { await api.createService({ name: name.trim(), duration_minutes: Math.max(15, duration), price: Math.max(0, price) }); setName(''); await onRefresh(); } catch (error) { setMessage(error instanceof Error ? error.message : '新增服務失敗。'); } }}>
+        <form className="service-create-form" onSubmit={async event => { event.preventDefault(); setMessage(''); try { await api.createService({ name: name.trim(), duration_minutes: Math.max(15, duration), price: Math.max(0, price) }); setName(''); setDuration(0); await onRefresh(); } catch (error) { setMessage(error instanceof Error ? error.message : '新增服務失敗。'); } }}>
           <input required aria-label="新服務名稱" placeholder="服務名稱" value={name} onChange={event => setName(event.target.value)}/><input required type="number" min="15" step="15" aria-label="新服務所需分鐘" value={duration} onChange={event => setDuration(Number(event.target.value))}/><input required type="number" min="0" aria-label="新服務價格" value={price} onChange={event => setPrice(Number(event.target.value))}/><button className="btn">新增服務</button>
         </form>
       </div>

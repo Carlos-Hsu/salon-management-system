@@ -38,6 +38,7 @@
 - [x] Fixed both new-appointment forms so their displayed default and submitted service ID always come from the currently active service list; inactive historical services remain available only when editing an existing appointment.
 - [x] Added visible, localized conflict feedback and saving states to both appointment forms so overlapping appointments no longer fail silently.
 - [x] Released calendar capacity immediately after checkout: completed appointments remain auditable but no longer block the next booking; pending, confirmed, and in-service appointments still enforce overlap protection.
+- [x] Changed the new-service duration field to start at 0 minutes and reset to 0 after creation, while retaining the 15-minute minimum for saved services and valid appointment intervals.
 
 ## Validation Status
 - `npm run lint --prefix frontend`: passed.
